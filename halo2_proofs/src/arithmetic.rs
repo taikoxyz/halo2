@@ -25,6 +25,9 @@ where
 {
 }
 
+/// TEMP
+pub static mut MULTIEXP_TOTAL_TIME: usize = 0;
+
 fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
     let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
@@ -147,8 +150,11 @@ pub fn small_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::C
 pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     assert_eq!(coeffs.len(), bases.len());
 
+    //println!("msm: {}", coeffs.len());
+
+    let start = get_time();
     let num_threads = multicore::current_num_threads();
-    if coeffs.len() > num_threads {
+    let res = if coeffs.len() > num_threads {
         let chunk = coeffs.len() / num_threads;
         let num_chunks = coeffs.chunks(chunk).len();
         let mut results = vec![C::Curve::identity(); num_chunks];
@@ -170,7 +176,15 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
         let mut acc = C::Curve::identity();
         multiexp_serial(coeffs, bases, &mut acc);
         acc
+    };
+
+    let duration = get_duration(start);
+    #[allow(unsafe_code)]
+    unsafe {
+        MULTIEXP_TOTAL_TIME += duration;
     }
+
+    res
 }
 
 /// Performs a radix-$2$ Fast-Fourier Transformation (FFT) on a vector of size
@@ -205,6 +219,7 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
         }
     }
 
+    //let start = start_measure(format!("twiddles {} ({})", a.len(), threads), false);
     // precompute twiddle factors
     let twiddles: Vec<_> = (0..(n / 2) as usize)
         .scan(Scalar::ONE, |w, _| {
@@ -213,6 +228,7 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
             Some(tw)
         })
         .collect();
+    //stop_measure(start);
 
     if log_n <= log_threads {
         let mut chunk = 2_usize;
@@ -402,6 +418,29 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     });
 }
 
+/// This simple utility function will parallelize an operation that is to be
+/// performed over a mutable slice.
+pub fn parallelize_count<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(
+    v: &mut [T],
+    num_threads: usize,
+    f: F,
+) {
+    let n = v.len();
+    let mut chunk = (n as usize) / num_threads;
+    if chunk < num_threads {
+        chunk = n as usize;
+    }
+
+    multicore::scope(|scope| {
+        for (chunk_num, v) in v.chunks_mut(chunk).enumerate() {
+            let f = f.clone();
+            scope.spawn(move |_| {
+                f(v, chunk_num);
+            });
+        }
+    });
+}
+
 fn log2_floor(num: usize) -> u32 {
     assert!(num > 0);
 
@@ -501,6 +540,7 @@ use rand_core::OsRng;
 
 #[cfg(test)]
 use crate::halo2curves::pasta::Fp;
+use crate::plonk::{get_duration, get_time, start_measure, stop_measure};
 
 #[test]
 fn test_lagrange_interpolate() {

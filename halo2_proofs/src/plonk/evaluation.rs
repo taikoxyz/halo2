@@ -26,7 +26,7 @@ use std::{
     ops::{Index, Mul, MulAssign},
 };
 
-use super::{ConstraintSystem, Expression};
+use super::{start_measure, stop_measure, ConstraintSystem, Expression};
 
 /// Return the index in the polynomial of size `isize` after rotation `rot`.
 fn get_rotation_idx(idx: usize, rot: i32, rot_scale: i32, isize: i32) -> usize {
@@ -303,12 +303,13 @@ impl<C: CurveAffine> Evaluator<C> {
         let p = &pk.vk.cs.permutation;
 
         // Calculate the advice and instance cosets
+        let start = start_measure("cosets", false);
         let advice: Vec<Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>> = advice_polys
             .iter()
             .map(|advice_polys| {
                 advice_polys
                     .iter()
-                    .map(|poly| domain.coeff_to_extended(poly.clone()))
+                    .map(|poly| domain.coeff_to_extended(poly))
                     .collect()
             })
             .collect();
@@ -317,10 +318,11 @@ impl<C: CurveAffine> Evaluator<C> {
             .map(|instance_polys| {
                 instance_polys
                     .iter()
-                    .map(|poly| domain.coeff_to_extended(poly.clone()))
+                    .map(|poly| domain.coeff_to_extended(poly))
                     .collect()
             })
             .collect();
+        stop_measure(start);
 
         let mut values = domain.empty_extended();
 
@@ -333,6 +335,7 @@ impl<C: CurveAffine> Evaluator<C> {
             .zip(permutations.iter())
         {
             // Custom gates
+            let start = start_measure("custom gates", false);
             multicore::scope(|scope| {
                 let chunk_size = (size + num_threads - 1) / num_threads;
                 for (thread_idx, values) in values.chunks_mut(chunk_size).enumerate() {
@@ -360,8 +363,10 @@ impl<C: CurveAffine> Evaluator<C> {
                     });
                 }
             });
+            stop_measure(start);
 
             // Permutations
+            let start = start_measure("permutations", false);
             let sets = &permutation.sets;
             if !sets.is_empty() {
                 let blinding_factors = pk.vk.cs.blinding_factors();
@@ -442,21 +447,19 @@ impl<C: CurveAffine> Evaluator<C> {
                     }
                 });
             }
+            stop_measure(start);
 
             // Lookups
+            let start = start_measure("lookups", false);
             for (n, lookup) in lookups.iter().enumerate() {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = pk.vk.domain.coeff_to_extended(lookup.product_poly.clone());
-                let permuted_input_coset = pk
-                    .vk
-                    .domain
-                    .coeff_to_extended(lookup.permuted_input_poly.clone());
-                let permuted_table_coset = pk
-                    .vk
-                    .domain
-                    .coeff_to_extended(lookup.permuted_table_poly.clone());
+                let product_coset = pk.vk.domain.coeff_to_extended(&lookup.product_poly);
+                let permuted_input_coset =
+                    pk.vk.domain.coeff_to_extended(&lookup.permuted_input_poly);
+                let permuted_table_coset =
+                    pk.vk.domain.coeff_to_extended(&lookup.permuted_table_poly);
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {
@@ -517,6 +520,7 @@ impl<C: CurveAffine> Evaluator<C> {
                     }
                 });
             }
+            stop_measure(start);
         }
         values
     }

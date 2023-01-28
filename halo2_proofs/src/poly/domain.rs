@@ -2,24 +2,31 @@
 //! domain that is of a suitable size for the application.
 
 use crate::{
-    arithmetic::{best_fft, parallelize},
-    plonk::Assigned,
+    arithmetic::{self, best_fft, parallelize},
+    fft::{
+        recursive::{self, FFTData},
+    },
+    multicore,
+    plonk::{get_duration, get_time, start_measure, stop_measure, Assigned, log_info},
 };
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use ff::WithSmallOrderMulGroup;
 use group::{
-    ff::{BatchInvert, Field, PrimeField},
+    ff::{self, BatchInvert, Field, PrimeField},
     Group,
 };
 
-use std::marker::PhantomData;
+use std::{env::var, marker::PhantomData};
+
+/// TEMP
+pub static mut FFT_TOTAL_TIME: usize = 0;
 
 /// This structure contains precomputed constants and other details needed for
 /// performing operations on an evaluation domain of size $2^k$ and an extended
 /// domain of size $2^{k} * j$ with $j \neq 0$.
 #[derive(Clone, Debug)]
-pub struct EvaluationDomain<F: Field> {
+pub struct EvaluationDomain<F: ff::Field> {
     n: u64,
     k: u32,
     extended_k: u32,
@@ -34,6 +41,10 @@ pub struct EvaluationDomain<F: Field> {
     extended_ifft_divisor: F,
     t_evaluations: Vec<F>,
     barycentric_weight: F,
+
+    /// Recursive stuff
+    fft_data: FFTData<F>,
+    extended_fft_data: FFTData<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
@@ -53,6 +64,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         while (1 << extended_k) < (n * quotient_poly_degree) {
             extended_k += 1;
         }
+        log_info(format!("k: {}, extended_k: {}", k, extended_k));
 
         let mut extended_omega = F::ROOT_OF_UNITY;
 
@@ -126,6 +138,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             .chain(Some(&mut omega_inv))
             .batch_invert();
 
+
         EvaluationDomain {
             n,
             k,
@@ -141,6 +154,12 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             extended_ifft_divisor,
             t_evaluations,
             barycentric_weight,
+            fft_data: FFTData::<F>::new(n as usize, omega, omega_inv),
+            extended_fft_data: FFTData::<F>::new(
+                (1 << extended_k) as usize,
+                extended_omega,
+                extended_omega_inv,
+            ),
         }
     }
 
@@ -227,7 +246,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), 1 << self.k);
 
         // Perform inverse FFT to obtain the polynomial in coefficient form
-        Self::ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
+        self.ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
 
         Polynomial {
             values: a.values,
@@ -245,7 +264,17 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
-        best_fft(&mut a.values, self.extended_omega, self.extended_k);
+
+        let l = a.len();
+        let fft_data = self.get_fft_data(l);
+
+        best_fft(
+            &mut a.values,
+            self.extended_omega,
+            self.extended_k,
+            fft_data,
+            false,
+        );
 
         Polynomial {
             values: a.values,
@@ -282,7 +311,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
         // Inverse FFT
-        Self::ifft(
+        self.ifft(
             &mut a.values,
             self.extended_omega_inv,
             self.extended_k,
@@ -350,14 +379,26 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         });
     }
 
-    fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
-        best_fft(a, omega_inv, log_n);
+    fn ifft(&self, a: &mut Vec<F>, omega_inv: F, log_n: u32, divisor: F) {
+        self.fft_inner(a, omega_inv, log_n, true);
         parallelize(a, |a, _| {
             for a in a {
                 // Finish iFFT
                 *a *= &divisor;
             }
         });
+    }
+
+    fn fft_inner(&self, a: &mut Vec<F>, omega: F, log_n: u32, inverse: bool) {
+        let start = get_time();
+        let fft_data = self.get_fft_data(a.len());
+        best_fft(a, omega, log_n, fft_data, inverse);
+        let duration = get_duration(start);
+
+        #[allow(unsafe_code)]
+        unsafe {
+            FFT_TOTAL_TIME += duration;
+        }
     }
 
     /// Get the size of the domain
@@ -474,16 +515,34 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             omega: &self.omega,
         }
     }
+
+    /// Get the private field `n`
+    pub fn get_n(&self) -> u64 { self.n }
+
+    /// Get the private `fft_data`
+    pub fn get_fft_data(&self, l: usize) -> &FFTData<F> {
+            if l == self.fft_data.get_n() {
+                &self.fft_data
+            } else {
+                &self.extended_fft_data
+            }
+        }
 }
 
 /// Represents the minimal parameters that determine an `EvaluationDomain`.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct PinnedEvaluationDomain<'a, F: Field> {
+pub struct PinnedEvaluationDomain<'a, F: ff::Field> {
     k: &'a u32,
     extended_k: &'a u32,
     omega: &'a F,
 }
+
+#[cfg(test)]
+use std::{
+    env,
+    time::Instant,
+};
 
 #[test]
 fn test_rotate() {

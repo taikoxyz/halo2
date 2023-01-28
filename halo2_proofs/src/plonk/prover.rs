@@ -18,6 +18,9 @@ use super::{
     lookup, permutation, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta, ChallengeX,
     ChallengeY, Error, Expression, ProvingKey,
 };
+use crate::arithmetic::MULTIEXP_TOTAL_TIME;
+use crate::plonk::{start_measure, stop_measure, log_info};
+use crate::poly::FFT_TOTAL_TIME;
 use crate::{
     arithmetic::{eval_polynomial, CurveAffine},
     circuit::Value,
@@ -57,6 +60,12 @@ pub fn create_proof<
 where
     Scheme::Scalar: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
 {
+    #[allow(unsafe_code)]
+    unsafe {
+        FFT_TOTAL_TIME = 0;
+        MULTIEXP_TOTAL_TIME = 0;
+    }
+
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -82,6 +91,7 @@ where
         pub instance_polys: Vec<Polynomial<C::Scalar, Coeff>>,
     }
 
+    let start = start_measure("instances", false);
     let instance: Vec<InstanceSingle<Scheme::Curve>> = instances
         .iter()
         .map(|instance| -> Result<InstanceSingle<Scheme::Curve>, Error> {
@@ -136,6 +146,7 @@ where
             })
         })
         .collect::<Result<Vec<_>, _>>()?;
+    stop_measure(start);
 
     #[derive(Clone)]
     struct AdviceSingle<C: CurveAffine, B: Basis> {
@@ -287,6 +298,7 @@ where
         }
     }
 
+    let start = start_measure("advice_values", false);
     let (advice, challenges) = {
         let mut advice = vec![
             AdviceSingle::<Scheme::Curve, LagrangeCoeff> {
@@ -315,6 +327,7 @@ where
             for ((circuit, advice), instances) in
                 circuits.iter().zip(advice.iter_mut()).zip(instances)
             {
+                let start = start_measure("witness collection", false);
                 let mut witness = WitnessCollection {
                     k: params.k(),
                     current_phase,
@@ -336,7 +349,9 @@ where
                     config.clone(),
                     meta.constants.clone(),
                 )?;
+                stop_measure(start);
 
+                let start = start_measure("batch invert", false);
                 let mut advice_values = batch_invert_assigned::<Scheme::Scalar>(
                     witness
                         .advice
@@ -351,6 +366,7 @@ where
                         })
                         .collect(),
                 );
+                stop_measure(start);
 
                 // Add blinding factors to advice columns
                 for advice_values in &mut advice_values {
@@ -360,6 +376,7 @@ where
                 }
 
                 // Compute commitments to advice column polynomials
+                let start = start_measure("commit_lagrange", false);
                 let blinds: Vec<_> = advice_values
                     .iter()
                     .map(|_| Blind(Scheme::Scalar::random(&mut rng)))
@@ -387,6 +404,7 @@ where
                     advice.advice_polys[*column_index] = advice_values;
                     advice.advice_blinds[*column_index] = blind;
                 }
+                stop_measure(start);
             }
 
             for (index, phase) in meta.challenge_phase.iter().enumerate() {
@@ -405,10 +423,12 @@ where
 
         (advice, challenges)
     };
+    stop_measure(start);
 
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
 
+    let start = start_measure("lookups", false);
     let lookups: Vec<Vec<lookup::prover::Permuted<Scheme::Curve>>> = instance
         .iter()
         .zip(advice.iter())
@@ -435,6 +455,7 @@ where
                 .collect()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    stop_measure(start);
 
     // Sample beta challenge
     let beta: ChallengeBeta<_> = transcript.squeeze_challenge_scalar();
@@ -443,6 +464,7 @@ where
     let gamma: ChallengeGamma<_> = transcript.squeeze_challenge_scalar();
 
     // Commit to permutations.
+    let start = start_measure("permutation.commit", false);
     let permutations: Vec<permutation::prover::Committed<Scheme::Curve>> = instance
         .iter()
         .zip(advice.iter())
@@ -461,7 +483,9 @@ where
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
+    stop_measure(start);
 
+    let start = start_measure("lookups.commit_product", false);
     let lookups: Vec<Vec<lookup::prover::Committed<Scheme::Curve>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
@@ -472,6 +496,7 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    stop_measure(start);
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::commit(params, domain, &mut rng, transcript)?;
@@ -480,6 +505,7 @@ where
     let y: ChallengeY<_> = transcript.squeeze_challenge_scalar();
 
     // Calculate the advice polys
+    let start = start_measure("advice_polys", false);
     let advice: Vec<AdviceSingle<Scheme::Curve, Coeff>> = advice
         .into_iter()
         .map(
@@ -497,8 +523,10 @@ where
             },
         )
         .collect();
+    stop_measure(start);
 
     // Evaluate the h(X) polynomial
+    let start = start_measure("evaluate_h", false);
     let h_poly = pk.ev.evaluate_h(
         pk,
         &advice
@@ -517,6 +545,7 @@ where
         &lookups,
         &permutations,
     );
+    stop_measure(start);
 
     // Construct the vanishing argument's h(X) commitments
     let vanishing = vanishing.construct(params, domain, h_poly, &mut rng, transcript)?;
@@ -524,6 +553,7 @@ where
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
     let xn = x.pow(&[params.n() as u64, 0, 0, 0]);
 
+    let start = start_measure("instance eval_polynomial", false);
     if P::QUERY_INSTANCE {
         // Compute and hash instance evals for each circuit instance
         for instance in instance.iter() {
@@ -545,8 +575,10 @@ where
             }
         }
     }
+    stop_measure(start);
 
     // Compute and hash advice evals for each circuit instance
+    let start = start_measure("advice eval_polynomial", false);
     for advice in advice.iter() {
         // Evaluate polynomials at omega^i x
         let advice_evals: Vec<_> = meta
@@ -565,8 +597,10 @@ where
             transcript.write_scalar(*eval)?;
         }
     }
+    stop_measure(start);
 
     // Compute and hash fixed evals (shared across all circuit instances)
+    let start = start_measure("fixed eval_polynomial", false);
     let fixed_evals: Vec<_> = meta
         .fixed_queries
         .iter()
@@ -574,6 +608,7 @@ where
             eval_polynomial(&pk.fixed_polys[column.index()], domain.rotate_omega(*x, at))
         })
         .collect();
+    stop_measure(start);
 
     // Hash each fixed column evaluation
     for eval in fixed_evals.iter() {
@@ -592,6 +627,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
+    let start = start_measure("lookup evaluate", false);
     let lookups: Vec<Vec<lookup::prover::Evaluated<Scheme::Curve>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
@@ -601,6 +637,7 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    stop_measure(start);
 
     let instances = instance
         .iter()
@@ -650,8 +687,18 @@ where
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
 
+    let start = start_measure("create_proof", false);
     let prover = P::new(params);
-    prover
+    let proof = prover
         .create_proof(rng, transcript, instances)
-        .map_err(|_| Error::ConstraintSystemFailure)
+        .map_err(|_| Error::ConstraintSystemFailure);
+    stop_measure(start);
+
+    #[allow(unsafe_code)]
+    unsafe {
+        log_info(format!("·FFT: {}s", (FFT_TOTAL_TIME as f32) / 1000000.0));
+        log_info(format!("·MultiExps: {}s", (MULTIEXP_TOTAL_TIME as f32) / 1000000.0));
+    }
+
+    proof
 }

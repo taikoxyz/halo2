@@ -480,6 +480,7 @@ impl Selector {
     pub fn is_simple(&self) -> bool {
         self.1
     }
+
 }
 
 /// Query of fixed column at a certain relative location

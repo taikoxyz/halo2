@@ -481,6 +481,12 @@ impl Selector {
         self.1
     }
 
+    /// Return expression from selector
+    pub fn expr<F: Field>(&self) -> Expression<F> {
+        Expression::Selector(*self)
+    }
+
+
 }
 
 /// Query of fixed column at a certain relative location

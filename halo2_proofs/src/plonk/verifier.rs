@@ -215,9 +215,9 @@ pub fn verify_proof<
                             poly.evaluate(
                                 &|scalar| scalar,
                                 &|_| panic!("virtual selectors are removed during optimization"),
-                                &|query| fixed_evals[query.index],
-                                &|query| advice_evals[query.index],
-                                &|query| instance_evals[query.index],
+                                &|query| fixed_evals[query.index.unwrap()],
+                                &|query| advice_evals[query.index.unwrap()],
+                                &|query| instance_evals[query.index.unwrap()],
                                 &|challenge| challenges[challenge.index()],
                                 &|a| -a,
                                 &|a, b| a + &b,

@@ -4,7 +4,7 @@ use crate::plonk::{self, Any};
 use std::fmt;
 
 /// Metadata about a column within a circuit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Column {
     /// The type of the column.
     pub(super) column_type: Any,

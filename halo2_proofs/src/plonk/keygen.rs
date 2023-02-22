@@ -178,6 +178,14 @@ impl<F: Field> Assignment<F> for Assembly<F> {
         Value::unknown()
     }
 
+    fn annotate_column<A, AR>(&mut self, _annotation: A, _column: Column<Any>)
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>,
+    {
+        // Do nothing
+    }
+
     fn push_namespace<NR, N>(&mut self, _: N)
     where
         NR: Into<String>,
@@ -225,7 +233,7 @@ where
     )?;
 
     let mut fixed = batch_invert_assigned(assembly.fixed);
-    let (cs, selector_polys) = cs.compress_selectors(assembly.selectors);
+    let (cs, selector_polys) = cs.compress_selectors(assembly.selectors.clone());
     fixed.extend(
         selector_polys
             .into_iter()
@@ -246,6 +254,7 @@ where
         fixed_commitments,
         permutation_vk,
         cs,
+        assembly.selectors,
     ))
 }
 

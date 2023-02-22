@@ -804,6 +804,40 @@ pub enum Expression<F> {
 
 impl<F: Field> Expression<F> {
 
+    /// Make side effects
+    pub fn load_to_virtual_cells(&mut self, cells: &mut VirtualCells<'_, F>) {
+        match self {
+            Expression::Constant(_) => (),
+            Expression::Selector(_) => (),
+            Expression::Fixed(query) => {
+                let col = Column{ index: query.column_index, column_type: Fixed};
+                cells.queried_cells.push((col, query.rotation).into());
+                query.index = Some(cells.meta.query_fixed_index(col, query.rotation));
+            },
+            Expression::Advice(query) => {
+                let col = Column{ index: query.column_index, column_type: Advice{phase: query.phase}};
+                cells.queried_cells.push((col, query.rotation).into());
+                query.index = Some(cells.meta.query_advice_index(col, query.rotation));
+            }
+            Expression::Instance(query) => {
+                let col = Column{ index: query.column_index, column_type: Instance};
+                cells.queried_cells.push((col, query.rotation).into());
+                query.index = Some(cells.meta.query_instance_index(col, query.rotation));
+            },
+            Expression::Challenge(_) => (),
+            Expression::Negated(a) => a.load_to_virtual_cells(cells),
+            Expression::Sum(a, b) => {
+                a.load_to_virtual_cells(cells);
+                b.load_to_virtual_cells(cells);
+            },
+            Expression::Product(a, b) => {
+                a.load_to_virtual_cells(cells);
+                b.load_to_virtual_cells(cells);
+            },
+            Expression::Scaled(a, _) => a.load_to_virtual_cells(cells),
+        };
+    }
+
     /// Evaluate the polynomial using the provided closures to perform the
     /// operations.
     pub fn evaluate<T>(
@@ -1306,6 +1340,34 @@ impl<Col: Into<Column<Any>>> From<(Col, Rotation)> for VirtualCell {
     }
 }
 
+// impl From<FixedQuery> for VirtualCell {
+//     fn from(query: FixedQuery) -> VirtualCell{
+//         VirtualCell{
+//             column: Column {index: query.column_index, column_type: Any::from(Fixed) },
+//             rotation: query.rotation
+//         }
+//     }
+// }
+//
+// impl From<AdviceQuery> for VirtualCell {
+//     fn from(query: AdviceQuery) -> VirtualCell{
+//         VirtualCell{
+//             column: Column {index: query.column_index, column_type: Advice(Advice{phase: query.phase})},
+//             rotation: query.rotation
+//         }
+//     }
+// }
+//
+// impl From<InstanceQuery> for VirtualCell {
+//     fn from(query: InstanceQuery) -> VirtualCell{
+//         VirtualCell{
+//             column: Column {index: query.column_index, column_type: Any::from(Instance) },
+//             rotation: query.rotation
+//         }
+//     }
+// }
+
+
 /// An individual polynomial constraint.
 ///
 /// These are returned by the closures passed to `ConstraintSystem::create_gate`.
@@ -1794,14 +1856,17 @@ impl<F: Field> ConstraintSystem<F> {
     ) {
         let mut cells = VirtualCells::new(self);
         let constraints = constraints(&mut cells);
-        let queried_selectors = cells.queried_selectors;
-        let queried_cells = cells.queried_cells;
-
         let (constraint_names, polys): (_, Vec<_>) = constraints
             .into_iter()
             .map(|c| c.into())
-            .map(|c| (c.name, c.poly))
+            .map(|mut c: Constraint<F>| {
+                c.poly.load_to_virtual_cells(&mut cells);
+                (c.name, c.poly)
+            })
             .unzip();
+
+        let queried_selectors = cells.queried_selectors;
+        let queried_cells = cells.queried_cells;
 
         assert!(
             !polys.is_empty(),

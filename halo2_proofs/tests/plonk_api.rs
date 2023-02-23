@@ -643,14 +643,18 @@ fn plonk_api() {
                         Sum(
                             Product(
                                 Advice {
-                                    query_index: 0,
+                                    query_index: Some(
+                                        0,
+                                    ),
                                     column_index: 1,
                                     rotation: Rotation(
                                         0,
                                     ),
                                 },
                                 Fixed {
-                                    query_index: 2,
+                                    query_index: Some(
+                                        1,
+                                    ),
                                     column_index: 2,
                                     rotation: Rotation(
                                         0,
@@ -659,14 +663,18 @@ fn plonk_api() {
                             ),
                             Product(
                                 Advice {
-                                    query_index: 1,
+                                    query_index: Some(
+                                        1,
+                                    ),
                                     column_index: 2,
                                     rotation: Rotation(
                                         0,
                                     ),
                                 },
                                 Fixed {
-                                    query_index: 3,
+                                    query_index: Some(
+                                        2,
+                                    ),
                                     column_index: 3,
                                     rotation: Rotation(
                                         0,
@@ -677,14 +685,18 @@ fn plonk_api() {
                         Product(
                             Product(
                                 Advice {
-                                    query_index: 0,
+                                    query_index: Some(
+                                        0,
+                                    ),
                                     column_index: 1,
                                     rotation: Rotation(
                                         0,
                                     ),
                                 },
                                 Advice {
-                                    query_index: 1,
+                                    query_index: Some(
+                                        1,
+                                    ),
                                     column_index: 2,
                                     rotation: Rotation(
                                         0,
@@ -692,7 +704,9 @@ fn plonk_api() {
                                 },
                             ),
                             Fixed {
-                                query_index: 5,
+                                query_index: Some(
+                                    3,
+                                ),
                                 column_index: 1,
                                 rotation: Rotation(
                                     0,
@@ -703,14 +717,18 @@ fn plonk_api() {
                     Negated(
                         Product(
                             Advice {
-                                query_index: 2,
+                                query_index: Some(
+                                    2,
+                                ),
                                 column_index: 3,
                                 rotation: Rotation(
                                     0,
                                 ),
                             },
                             Fixed {
-                                query_index: 4,
+                                query_index: Some(
+                                    4,
+                                ),
                                 column_index: 4,
                                 rotation: Rotation(
                                     0,
@@ -721,7 +739,9 @@ fn plonk_api() {
                 ),
                 Product(
                     Fixed {
-                        query_index: 1,
+                        query_index: Some(
+                            5,
+                        ),
                         column_index: 0,
                         rotation: Rotation(
                             0,
@@ -729,14 +749,18 @@ fn plonk_api() {
                     },
                     Product(
                         Advice {
-                            query_index: 3,
+                            query_index: Some(
+                                3,
+                            ),
                             column_index: 4,
                             rotation: Rotation(
                                 1,
                             ),
                         },
                         Advice {
-                            query_index: 4,
+                            query_index: Some(
+                                4,
+                            ),
                             column_index: 0,
                             rotation: Rotation(
                                 -1,
@@ -747,7 +771,9 @@ fn plonk_api() {
             ),
             Product(
                 Fixed {
-                    query_index: 6,
+                    query_index: Some(
+                        6,
+                    ),
                     column_index: 5,
                     rotation: Rotation(
                         0,
@@ -755,7 +781,9 @@ fn plonk_api() {
                 },
                 Sum(
                     Advice {
-                        query_index: 0,
+                        query_index: Some(
+                            0,
+                        ),
                         column_index: 1,
                         rotation: Rotation(
                             0,
@@ -763,7 +791,9 @@ fn plonk_api() {
                     },
                     Negated(
                         Instance {
-                            query_index: 0,
+                            query_index: Some(
+                                0,
+                            ),
                             column_index: 0,
                             rotation: Rotation(
                                 0,
@@ -861,15 +891,6 @@ fn plonk_api() {
             ),
             (
                 Column {
-                    index: 0,
-                    column_type: Fixed,
-                },
-                Rotation(
-                    0,
-                ),
-            ),
-            (
-                Column {
                     index: 2,
                     column_type: Fixed,
                 },
@@ -888,6 +909,15 @@ fn plonk_api() {
             ),
             (
                 Column {
+                    index: 1,
+                    column_type: Fixed,
+                },
+                Rotation(
+                    0,
+                ),
+            ),
+            (
+                Column {
                     index: 4,
                     column_type: Fixed,
                 },
@@ -897,7 +927,7 @@ fn plonk_api() {
             ),
             (
                 Column {
-                    index: 1,
+                    index: 0,
                     column_type: Fixed,
                 },
                 Rotation(
@@ -970,7 +1000,9 @@ fn plonk_api() {
             Argument {
                 input_expressions: [
                     Advice {
-                        query_index: 0,
+                        query_index: Some(
+                            0,
+                        ),
                         column_index: 1,
                         rotation: Rotation(
                             0,
@@ -979,7 +1011,9 @@ fn plonk_api() {
                 ],
                 table_expressions: [
                     Fixed {
-                        query_index: 0,
+                        query_index: Some(
+                            0,
+                        ),
                         column_index: 6,
                         rotation: Rotation(
                             0,

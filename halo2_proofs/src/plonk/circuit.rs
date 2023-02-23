@@ -1668,17 +1668,16 @@ impl<F: Field> ConstraintSystem<F> {
         let mut cells = VirtualCells::new(self);
         let table_map = table_map(&mut cells)
             .into_iter()
-            .map(|(input, table)| {
+            .map(|(mut input, mut table)| {
                 if input.contains_simple_selector() {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }
-
-                let table = cells.query_fixed(table.inner(), Rotation::cur());
-
+                let mut table = cells.query_fixed(table.inner(), Rotation::cur());
+                input.query_cells(&mut cells);
+                table.query_cells(&mut cells);
                 (input, table)
             })
             .collect();
-
         let index = self.lookups.len();
 
         self.lookups.push(lookup::Argument::new(name, table_map));
@@ -1696,8 +1695,14 @@ impl<F: Field> ConstraintSystem<F> {
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) -> usize {
         let mut cells = VirtualCells::new(self);
-        let table_map = table_map(&mut cells);
-
+        let table_map = table_map(&mut cells)
+            .into_iter()
+            .map(|(mut input, mut table)| {
+                input.query_cells(&mut cells);
+                table.query_cells(&mut cells);
+                (input, table)
+            })
+            .collect();
         let index = self.lookups.len();
 
         self.lookups.push(lookup::Argument::new(name, table_map));

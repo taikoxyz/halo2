@@ -66,16 +66,12 @@ impl<const W: usize> MyConfig<W> {
         let z = meta.advice_column_in(SecondPhase);
 
         meta.create_gate("z should start with 1", |meta| {
-            // let q_first = meta.query_selector(q_first);
-            // let z = meta.query_advice(z, Rotation::cur());
             let one = Expression::Constant(F::one());
 
             vec![q_first.expr() * (one - z.cur())]
         });
 
         meta.create_gate("z should end with 1", |meta| {
-            // let q_last = meta.query_selector(q_last);
-            // let z = meta.query_advice(z, Rotation::cur());
             let one = Expression::Constant(F::one());
 
             vec![q_last.expr() * (one - z.cur())]

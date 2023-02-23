@@ -798,7 +798,7 @@ impl<F: Field> Expression<F> {
             Expression::Constant(_) => (),
             Expression::Selector(selector) => {
                 cells.queried_selectors.push(*selector);
-            },
+            }
             Expression::Fixed(query) => {
                 let col = Column {
                     index: query.column_index,

@@ -1,47 +1,41 @@
-use core::cmp::max;
-use core::ops::{Add, Mul};
-use ff::Field;
-use std::collections::HashMap;
-use std::{
-    convert::TryFrom,
-    ops::{Neg, Sub},
-};
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
-use std::marker::PhantomData;
-use halo2curves::FieldExt;
-
 use super::{lookup, permutation, Assigned, Error};
 use crate::dev::metadata;
 use crate::{
     circuit::{Layouter, Region, Value},
     poly::Rotation,
 };
+use core::cmp::max;
+use core::ops::{Add, Mul};
+use ff::Field;
 use sealed::SealedPhase;
+use std::cmp::Ordering;
+use std::collections::HashMap;
+use std::{
+    convert::TryFrom,
+    ops::{Neg, Sub},
+};
 
 mod compress_selectors;
 
 /// A column type
 pub trait ColumnType:
-'static + Sized + Copy + std::fmt::Debug + PartialEq + Eq + Into<Any>
+    'static + Sized + Copy + std::fmt::Debug + PartialEq + Eq + Into<Any>
 {
     /// Return expression from cell
     fn query_cell<F: Field>(&self, index: usize, at: Rotation) -> Expression<F>;
 }
 
-
 /// A column with an index and type
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Column<C: ColumnType> {
     index: usize,
     column_type: C,
 }
 
 impl<C: ColumnType> Column<C> {
-
     #[cfg(test)]
     pub(crate) fn new(index: usize, column_type: C) -> Self {
-        Column {index, column_type, }
+        Column { index, column_type }
     }
 
     /// Index of this column.
@@ -75,14 +69,7 @@ impl<C: ColumnType> Column<C> {
     }
 }
 
-
-impl<C: ColumnType> PartialOrd<Self> for Column<C> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<C: ColumnType>  Ord for Column<C> {
+impl<C: ColumnType> Ord for Column<C> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         // This ordering is consensus-critical! The layouters rely on deterministic column
         // orderings.
@@ -94,12 +81,11 @@ impl<C: ColumnType>  Ord for Column<C> {
     }
 }
 
-impl<C: ColumnType> Hash for Column<C> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.index.hash(state);
+impl<C: ColumnType> PartialOrd<Self> for Column<C> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
-
 
 pub(crate) mod sealed {
     /// Phase of advice column
@@ -185,7 +171,6 @@ impl Advice {
     pub fn phase(&self) -> u8 {
         self.phase.0
     }
-
 }
 
 impl std::fmt::Debug for Advice {
@@ -202,10 +187,6 @@ impl std::fmt::Debug for Advice {
 /// A fixed column
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Fixed;
-
-impl Fixed {
-
-}
 
 /// An instance column
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
@@ -281,7 +262,7 @@ impl ColumnType for Advice {
             index: None,
             column_index: index,
             rotation: at,
-            phase: self.phase
+            phase: self.phase,
         })
     }
 }
@@ -306,7 +287,7 @@ impl ColumnType for Instance {
 impl ColumnType for Any {
     fn query_cell<F: Field>(&self, index: usize, at: Rotation) -> Expression<F> {
         match self {
-            Any::Advice(Advice{phase}) => Expression::Advice(AdviceQuery {
+            Any::Advice(Advice { phase }) => Expression::Advice(AdviceQuery {
                 index: None,
                 column_index: index,
                 rotation: at,
@@ -325,7 +306,6 @@ impl ColumnType for Any {
         }
     }
 }
-
 
 impl From<Advice> for Any {
     fn from(advice: Advice) -> Any {
@@ -442,7 +422,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// row when required:
 /// ```
 /// use halo2_proofs::{
-///     arithmetic::Field,
+///     arithmetic::FieldExt,
 ///     circuit::{Chip, Layouter, Value},
 ///     plonk::{Advice, Column, Error, Selector},
 /// };
@@ -455,7 +435,7 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///     s: Selector,
 /// }
 ///
-/// fn circuit_logic<F: Field, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+/// fn circuit_logic<F: FieldExt, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
 ///     let config = chip.config();
 ///     # let config: Config = todo!();
 ///     layouter.assign_region(|| "bar", |mut region| {
@@ -485,8 +465,6 @@ impl Selector {
     pub fn expr<F: Field>(&self) -> Expression<F> {
         Expression::Selector(*self)
     }
-
-
 }
 
 /// Query of fixed column at a certain relative location
@@ -623,9 +601,9 @@ pub trait Assignment<F: Field> {
     ///
     /// [`Layouter::assign_region`]: crate::circuit::Layouter#method.assign_region
     fn enter_region<NR, N>(&mut self, name_fn: N)
-        where
-            NR: Into<String>,
-            N: FnOnce() -> NR;
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR;
 
     // /// Allows the developer to include an annotation for an specific column within a `Region`.
     // ///
@@ -659,9 +637,9 @@ pub trait Assignment<F: Field> {
         selector: &Selector,
         row: usize,
     ) -> Result<(), Error>
-        where
-            A: FnOnce() -> AR,
-            AR: Into<String>;
+    where
+        A: FnOnce() -> AR,
+        AR: Into<String>;
 
     /// Queries the cell of an instance column at a particular absolute row.
     ///
@@ -676,11 +654,11 @@ pub trait Assignment<F: Field> {
         row: usize,
         to: V,
     ) -> Result<(), Error>
-        where
-            V: FnOnce() -> Value<VR>,
-            VR: Into<Assigned<F>>,
-            A: FnOnce() -> AR,
-            AR: Into<String>;
+    where
+        V: FnOnce() -> Value<VR>,
+        VR: Into<Assigned<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>;
 
     /// Assign a fixed value
     fn assign_fixed<V, VR, A, AR>(
@@ -690,11 +668,11 @@ pub trait Assignment<F: Field> {
         row: usize,
         to: V,
     ) -> Result<(), Error>
-        where
-            V: FnOnce() -> Value<VR>,
-            VR: Into<Assigned<F>>,
-            A: FnOnce() -> AR,
-            AR: Into<String>;
+    where
+        V: FnOnce() -> Value<VR>,
+        VR: Into<Assigned<F>>,
+        A: FnOnce() -> AR,
+        AR: Into<String>;
 
     /// Assign two cells to have the same value
     fn copy(
@@ -724,9 +702,9 @@ pub trait Assignment<F: Field> {
     ///
     /// [`Layouter::namespace`]: crate::circuit::Layouter#method.namespace
     fn push_namespace<NR, N>(&mut self, name_fn: N)
-        where
-            NR: Into<String>,
-            N: FnOnce() -> NR;
+    where
+        NR: Into<String>,
+        N: FnOnce() -> NR;
 
     /// Exits out of the existing namespace.
     ///
@@ -808,41 +786,47 @@ pub enum Expression<F> {
     Scaled(Box<Expression<F>>, F),
 }
 
-
-
 impl<F: Field> Expression<F> {
-
     /// Make side effects
-    pub fn load_to_virtual_cells(&mut self, cells: &mut VirtualCells<'_, F>) {
+    pub fn query_cells(&mut self, cells: &mut VirtualCells<'_, F>) {
         match self {
             Expression::Constant(_) => (),
             Expression::Selector(_) => (),
             Expression::Fixed(query) => {
-                let col = Column{ index: query.column_index, column_type: Fixed};
+                let col = Column {
+                    index: query.column_index,
+                    column_type: Fixed,
+                };
                 cells.queried_cells.push((col, query.rotation).into());
                 query.index = Some(cells.meta.query_fixed_index(col, query.rotation));
-            },
+            }
             Expression::Advice(query) => {
-                let col = Column{ index: query.column_index, column_type: Advice{phase: query.phase}};
+                let col = Column {
+                    index: query.column_index,
+                    column_type: Advice { phase: query.phase },
+                };
                 cells.queried_cells.push((col, query.rotation).into());
                 query.index = Some(cells.meta.query_advice_index(col, query.rotation));
             }
             Expression::Instance(query) => {
-                let col = Column{ index: query.column_index, column_type: Instance};
+                let col = Column {
+                    index: query.column_index,
+                    column_type: Instance,
+                };
                 cells.queried_cells.push((col, query.rotation).into());
                 query.index = Some(cells.meta.query_instance_index(col, query.rotation));
-            },
+            }
             Expression::Challenge(_) => (),
-            Expression::Negated(a) => a.load_to_virtual_cells(cells),
+            Expression::Negated(a) => a.query_cells(cells),
             Expression::Sum(a, b) => {
-                a.load_to_virtual_cells(cells);
-                b.load_to_virtual_cells(cells);
-            },
+                a.query_cells(cells);
+                b.query_cells(cells);
+            }
             Expression::Product(a, b) => {
-                a.load_to_virtual_cells(cells);
-                b.load_to_virtual_cells(cells);
-            },
-            Expression::Scaled(a, _) => a.load_to_virtual_cells(cells),
+                a.query_cells(cells);
+                b.query_cells(cells);
+            }
+            Expression::Scaled(a, _) => a.query_cells(cells),
         };
     }
 
@@ -1233,21 +1217,21 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
             Expression::Selector(selector) => f.debug_tuple("Selector").field(selector).finish(),
             // Skip enum variant and print query struct directly to maintain backwards compatibility.
             Expression::Fixed(FixedQuery {
-                                  index,
-                                  column_index,
-                                  rotation,
-                              }) => f
+                index,
+                column_index,
+                rotation,
+            }) => f
                 .debug_struct("Fixed")
                 .field("query_index", index)
                 .field("column_index", column_index)
                 .field("rotation", rotation)
                 .finish(),
             Expression::Advice(AdviceQuery {
-                                   index,
-                                   column_index,
-                                   rotation,
-                                   phase,
-                               }) => {
+                index,
+                column_index,
+                rotation,
+                phase,
+            }) => {
                 let mut debug_struct = f.debug_struct("Advice");
                 debug_struct
                     .field("query_index", index)
@@ -1260,10 +1244,10 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
                 debug_struct.finish()
             }
             Expression::Instance(InstanceQuery {
-                                     index,
-                                     column_index,
-                                     rotation,
-                                 }) => f
+                index,
+                column_index,
+                rotation,
+            }) => f
                 .debug_struct("Instance")
                 .field("query_index", index)
                 .field("column_index", column_index)
@@ -1347,34 +1331,6 @@ impl<Col: Into<Column<Any>>> From<(Col, Rotation)> for VirtualCell {
         }
     }
 }
-
-// impl From<FixedQuery> for VirtualCell {
-//     fn from(query: FixedQuery) -> VirtualCell{
-//         VirtualCell{
-//             column: Column {index: query.column_index, column_type: Any::from(Fixed) },
-//             rotation: query.rotation
-//         }
-//     }
-// }
-//
-// impl From<AdviceQuery> for VirtualCell {
-//     fn from(query: AdviceQuery) -> VirtualCell{
-//         VirtualCell{
-//             column: Column {index: query.column_index, column_type: Advice(Advice{phase: query.phase})},
-//             rotation: query.rotation
-//         }
-//     }
-// }
-//
-// impl From<InstanceQuery> for VirtualCell {
-//     fn from(query: InstanceQuery) -> VirtualCell{
-//         VirtualCell{
-//             column: Column {index: query.column_index, column_type: Any::from(Instance) },
-//             rotation: query.rotation
-//         }
-//     }
-// }
-
 
 /// An individual polynomial constraint.
 ///
@@ -1474,7 +1430,7 @@ type ConstraintsIterator<F, C, I> = std::iter::Map<
 >;
 
 impl<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> IntoIterator
-for Constraints<F, C, Iter>
+    for Constraints<F, C, Iter>
 {
     type Item = Constraint<F>;
     type IntoIter = ConstraintsIterator<F, C, Iter::IntoIter>;
@@ -1868,7 +1824,7 @@ impl<F: Field> ConstraintSystem<F> {
             .into_iter()
             .map(|c| c.into())
             .map(|mut c: Constraint<F>| {
-                c.poly.load_to_virtual_cells(&mut cells);
+                c.poly.query_cells(&mut cells);
                 (c.name, c.poly)
             })
             .unzip();
@@ -2033,9 +1989,9 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Annotate a Lookup column.
     pub fn annotate_lookup_column<A, AR>(&mut self, column: TableColumn, annotation: A)
-        where
-            A: Fn() -> AR,
-            AR: Into<String>,
+    where
+        A: Fn() -> AR,
+        AR: Into<String>,
     {
         // We don't care if the table has already an annotation. If it's the case we keep the new one.
         self.general_column_annotations.insert(
@@ -2046,10 +2002,10 @@ impl<F: Field> ConstraintSystem<F> {
 
     /// Annotate an Instance column.
     pub fn annotate_lookup_any_column<A, AR, T>(&mut self, column: T, annotation: A)
-        where
-            A: Fn() -> AR,
-            AR: Into<String>,
-            T: Into<Column<Any>>,
+    where
+        A: Fn() -> AR,
+        AR: Into<String>,
+        T: Into<Column<Any>>,
     {
         let col_any = column.into();
         // We don't care if the table has already an annotation. If it's the case we keep the new one.
@@ -2323,7 +2279,7 @@ impl<'a, F: Field> VirtualCells<'a, F> {
     }
 
     /// Query an advice column at a relative position
-    pub fn query_advice(&mut self, column: Column<Advice>, at: Rotation) ->  Expression<F> {
+    pub fn query_advice(&mut self, column: Column<Advice>, at: Rotation) -> Expression<F> {
         self.queried_cells.push((column, at).into());
         Expression::Advice(AdviceQuery {
             index: Some(self.meta.query_advice_index(column, at)),

@@ -88,7 +88,6 @@ impl<F: FieldExt> FieldChip<F> {
 
         // Define our multiplication gate!
         meta.create_gate("mul", |meta| {
-
             // let lhs = meta.query_advice(advice[0], Rotation::cur());
             // let rhs = meta.query_advice(advice[1], Rotation::cur());
             // let out = meta.query_advice(advice[0], Rotation::next());
@@ -96,7 +95,6 @@ impl<F: FieldExt> FieldChip<F> {
             // vec![s_mul * (lhs * rhs - out)]
 
             vec![s_mul.expr() * (advice[0].cur() * advice[1].cur() - advice[0].next())]
-
         });
 
         FieldConfig {

@@ -588,6 +588,11 @@ impl Challenge {
     pub fn phase(&self) -> u8 {
         self.phase.0
     }
+
+    /// Return Expression
+    pub fn expr<F: Field>(&self) -> Expression<F> {
+        Expression::Challenge(*self)
+    }
 }
 
 /// This trait allows a [`Circuit`] to direct some backend to assign a witness
@@ -791,7 +796,9 @@ impl<F: Field> Expression<F> {
     pub fn query_cells(&mut self, cells: &mut VirtualCells<'_, F>) {
         match self {
             Expression::Constant(_) => (),
-            Expression::Selector(_) => (),
+            Expression::Selector(selector) => {
+                cells.queried_selectors.push(*selector);
+            },
             Expression::Fixed(query) => {
                 let col = Column {
                     index: query.column_index,
@@ -2264,39 +2271,22 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 
     /// Query a selector at the current position.
     pub fn query_selector(&mut self, selector: Selector) -> Expression<F> {
-        self.queried_selectors.push(selector);
-        Expression::Selector(selector)
+        selector.expr()
     }
 
     /// Query a fixed column at a relative position
     pub fn query_fixed(&mut self, column: Column<Fixed>, at: Rotation) -> Expression<F> {
-        self.queried_cells.push((column, at).into());
-        Expression::Fixed(FixedQuery {
-            index: Some(self.meta.query_fixed_index(column, at)),
-            column_index: column.index,
-            rotation: at,
-        })
+        column.query_cell(at)
     }
 
     /// Query an advice column at a relative position
     pub fn query_advice(&mut self, column: Column<Advice>, at: Rotation) -> Expression<F> {
-        self.queried_cells.push((column, at).into());
-        Expression::Advice(AdviceQuery {
-            index: Some(self.meta.query_advice_index(column, at)),
-            column_index: column.index,
-            rotation: at,
-            phase: column.column_type().phase,
-        })
+        column.query_cell(at)
     }
 
     /// Query an instance column at a relative position
     pub fn query_instance(&mut self, column: Column<Instance>, at: Rotation) -> Expression<F> {
-        self.queried_cells.push((column, at).into());
-        Expression::Instance(InstanceQuery {
-            index: Some(self.meta.query_instance_index(column, at)),
-            column_index: column.index,
-            rotation: at,
-        })
+        column.query_cell(at)
     }
 
     /// Query an Any column at a relative position

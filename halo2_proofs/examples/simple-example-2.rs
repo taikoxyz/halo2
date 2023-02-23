@@ -251,7 +251,8 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
         &self,
         config: Self::Config,
         mut layouter: impl Layouter<F>,
-    ) -> Result<(), Error> {
+    ) -> Result<(), Error>
+    {
         let field_chip = FieldChip::<F>::construct(config);
 
         // Load our private values into the circuit.

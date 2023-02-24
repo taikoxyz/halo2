@@ -94,7 +94,7 @@ impl<F: FieldExt> FieldChip<F> {
             // let s_mul = meta.query_selector(s_mul);
             // vec![s_mul * (lhs * rhs - out)]
 
-            vec![s_mul.expr() * (advice[0].cur() * advice[1].cur() - advice[0].next())]
+            vec![s_mul.expr() * (advice[0].expr() * advice[1].expr() - advice[0].expr())]
         });
 
         FieldConfig {

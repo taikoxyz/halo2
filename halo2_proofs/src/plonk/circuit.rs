@@ -81,7 +81,7 @@ impl<C: ColumnType> Ord for Column<C> {
     }
 }
 
-impl<C: ColumnType> PartialOrd<Self> for Column<C> {
+impl<C: ColumnType> PartialOrd for Column<C> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }

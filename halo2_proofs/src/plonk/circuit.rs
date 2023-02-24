@@ -291,7 +291,7 @@ impl ColumnType for Any {
                 index: None,
                 column_index: index,
                 rotation: at,
-                phase: phase.clone(),
+                phase: *phase,
             }),
             Any::Fixed => Expression::Fixed(FixedQuery {
                 index: None,

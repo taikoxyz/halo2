@@ -48,7 +48,7 @@ impl<C: ColumnType> Column<C> {
         &self.column_type
     }
 
-    /// Return expression from cell
+    /// Return expression from column at a relative position
     pub fn query_cell<F: Field>(&self, at: Rotation) -> Expression<F> {
         self.column_type.query_cell(self.index, at)
     }

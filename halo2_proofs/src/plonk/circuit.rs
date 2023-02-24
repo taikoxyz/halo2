@@ -53,8 +53,8 @@ impl<C: ColumnType> Column<C> {
         self.column_type.query_cell(self.index, at)
     }
 
-    /// Return expression from cell
-    pub fn cur<F: Field>(&self) -> Expression<F> {
+    /// Return expression from column at the current row
+    pub fn expr<F: Field>(&self) -> Expression<F> {
         self.query_cell(Rotation::cur())
     }
 

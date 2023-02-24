@@ -58,7 +58,7 @@ impl<C: ColumnType> Column<C> {
         self.query_cell(Rotation::cur())
     }
 
-    /// Return expression from cell
+    /// Return expression from column at the next row
     pub fn next<F: Field>(&self) -> Expression<F> {
         self.query_cell(Rotation::next())
     }

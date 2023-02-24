@@ -1668,7 +1668,7 @@ impl<F: Field> ConstraintSystem<F> {
         let mut cells = VirtualCells::new(self);
         let table_map = table_map(&mut cells)
             .into_iter()
-            .map(|(mut input, mut table)| {
+            .map(|(mut input, table)| {
                 if input.contains_simple_selector() {
                     panic!("expression containing simple selector supplied to lookup argument");
                 }

@@ -582,7 +582,7 @@ mod tests {
             assert_eq!(
                 prover.verify(),
                 Err(vec![VerifyFailure::Lookup {
-                    name: String::from("lookup"),
+                    name: "lookup".to_string(),
                     lookup_index: 0,
                     location: FailureLocation::InRegion {
                         region: (1, "Range check 6 bits").into(),

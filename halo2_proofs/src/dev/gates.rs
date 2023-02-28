@@ -15,14 +15,14 @@ use crate::{
 
 #[derive(Debug)]
 struct Constraint {
-    name: &'static str,
+    name: String,
     expression: String,
     queries: BTreeSet<String>,
 }
 
 #[derive(Debug)]
 struct Gate {
-    name: &'static str,
+    name: String,
     constraints: Vec<Constraint>,
 }
 

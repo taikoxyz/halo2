@@ -10,8 +10,10 @@ use ff::Field;
 use sealed::SealedPhase;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::{
     convert::TryFrom,
+    fmt,
     ops::{Neg, Sub},
 };
 
@@ -473,7 +475,7 @@ impl Selector {
 }
 
 /// Query of fixed column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct FixedQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -495,8 +497,27 @@ impl FixedQuery {
     }
 }
 
+impl Debug for FixedQuery {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.index {
+            None => f
+                .debug_struct("FixedQuery")
+                .field("index", &self.index)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .finish(),
+            Some(idx) => f
+                .debug_struct("FixedQuery")
+                .field("index", &idx)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .finish(),
+        }
+    }
+}
+
 /// Query of advice column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct AdviceQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -525,8 +546,29 @@ impl AdviceQuery {
     }
 }
 
+impl Debug for AdviceQuery {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.index {
+            None => f
+                .debug_struct("AdviceQuery")
+                .field("index", &self.index)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .field("phase", &self.phase)
+                .finish(),
+            Some(idx) => f
+                .debug_struct("InstanceQuery")
+                .field("index", &idx)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .field("phase", &self.phase)
+                .finish(),
+        }
+    }
+}
+
 /// Query of instance column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 pub struct InstanceQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -545,6 +587,25 @@ impl InstanceQuery {
     /// Rotation of this query
     pub fn rotation(&self) -> Rotation {
         self.rotation
+    }
+}
+
+impl Debug for InstanceQuery {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.index {
+            None => f
+                .debug_struct("InstanceQuery")
+                .field("index", &self.index)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .finish(),
+            Some(idx) => f
+                .debug_struct("InstanceQuery")
+                .field("index", &idx)
+                .field("column_index", &self.column_index)
+                .field("rotation", &self.rotation)
+                .finish(),
+        }
     }
 }
 
@@ -802,31 +863,39 @@ impl<F: Field> Expression<F> {
         match self {
             Expression::Constant(_) => (),
             Expression::Selector(selector) => {
-                cells.queried_selectors.push(*selector);
+                if !cells.queried_selectors.contains(selector) {
+                    cells.queried_selectors.push(*selector);
+                }
             }
             Expression::Fixed(query) => {
-                let col = Column {
-                    index: query.column_index,
-                    column_type: Fixed,
-                };
-                cells.queried_cells.push((col, query.rotation).into());
-                query.index = Some(cells.meta.query_fixed_index(col, query.rotation));
+                if query.index.is_none() {
+                    let col = Column {
+                        index: query.column_index,
+                        column_type: Fixed,
+                    };
+                    cells.queried_cells.push((col, query.rotation).into());
+                    query.index = Some(cells.meta.query_fixed_index(col, query.rotation));
+                }
             }
             Expression::Advice(query) => {
-                let col = Column {
-                    index: query.column_index,
-                    column_type: Advice { phase: query.phase },
-                };
-                cells.queried_cells.push((col, query.rotation).into());
-                query.index = Some(cells.meta.query_advice_index(col, query.rotation));
+                if query.index.is_none() {
+                    let col = Column {
+                        index: query.column_index,
+                        column_type: Advice { phase: query.phase },
+                    };
+                    cells.queried_cells.push((col, query.rotation).into());
+                    query.index = Some(cells.meta.query_advice_index(col, query.rotation));
+                }
             }
             Expression::Instance(query) => {
-                let col = Column {
-                    index: query.column_index,
-                    column_type: Instance,
-                };
-                cells.queried_cells.push((col, query.rotation).into());
-                query.index = Some(cells.meta.query_instance_index(col, query.rotation));
+                if query.index.is_none() {
+                    let col = Column {
+                        index: query.column_index,
+                        column_type: Instance,
+                    };
+                    cells.queried_cells.push((col, query.rotation).into());
+                    query.index = Some(cells.meta.query_instance_index(col, query.rotation));
+                }
             }
             Expression::Challenge(_) => (),
             Expression::Negated(a) => a.query_cells(cells),

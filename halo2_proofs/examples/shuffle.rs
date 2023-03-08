@@ -95,9 +95,7 @@ impl<const W: usize> MyConfig<W> {
                 .reduce(|acc, a| acc * theta.clone() + a)
                 .unwrap();
 
-            vec![
-                q_shuffle * (z.cur() * (original + gamma.clone()) - z.next() * (shuffled + gamma)),
-            ]
+            vec![q_shuffle * (z.cur() * (original + gamma.clone()) - z.next() * (shuffled + gamma))]
         });
 
         Self {

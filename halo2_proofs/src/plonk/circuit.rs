@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::fmt::{Debug, Formatter};
 use std::{
     convert::TryFrom,
-    fmt,
     ops::{Neg, Sub},
 };
 
@@ -475,7 +474,7 @@ impl Selector {
 }
 
 /// Query of fixed column at a certain relative location
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct FixedQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -497,27 +496,8 @@ impl FixedQuery {
     }
 }
 
-impl Debug for FixedQuery {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.index {
-            None => f
-                .debug_struct("FixedQuery")
-                .field("index", &self.index)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .finish(),
-            Some(idx) => f
-                .debug_struct("FixedQuery")
-                .field("index", &idx)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .finish(),
-        }
-    }
-}
-
 /// Query of advice column at a certain relative location
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct AdviceQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -546,29 +526,8 @@ impl AdviceQuery {
     }
 }
 
-impl Debug for AdviceQuery {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.index {
-            None => f
-                .debug_struct("AdviceQuery")
-                .field("index", &self.index)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .field("phase", &self.phase)
-                .finish(),
-            Some(idx) => f
-                .debug_struct("InstanceQuery")
-                .field("index", &idx)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .field("phase", &self.phase)
-                .finish(),
-        }
-    }
-}
-
 /// Query of instance column at a certain relative location
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct InstanceQuery {
     /// Query index
     pub(crate) index: Option<usize>,
@@ -587,25 +546,6 @@ impl InstanceQuery {
     /// Rotation of this query
     pub fn rotation(&self) -> Rotation {
         self.rotation
-    }
-}
-
-impl Debug for InstanceQuery {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self.index {
-            None => f
-                .debug_struct("InstanceQuery")
-                .field("index", &self.index)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .finish(),
-            Some(idx) => f
-                .debug_struct("InstanceQuery")
-                .field("index", &idx)
-                .field("column_index", &self.column_index)
-                .field("rotation", &self.rotation)
-                .finish(),
-        }
     }
 }
 
@@ -1297,43 +1237,43 @@ impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
             Expression::Constant(scalar) => f.debug_tuple("Constant").field(scalar).finish(),
             Expression::Selector(selector) => f.debug_tuple("Selector").field(selector).finish(),
             // Skip enum variant and print query struct directly to maintain backwards compatibility.
-            Expression::Fixed(FixedQuery {
-                index,
-                column_index,
-                rotation,
-            }) => f
-                .debug_struct("Fixed")
-                .field("query_index", index)
-                .field("column_index", column_index)
-                .field("rotation", rotation)
-                .finish(),
-            Expression::Advice(AdviceQuery {
-                index,
-                column_index,
-                rotation,
-                phase,
-            }) => {
-                let mut debug_struct = f.debug_struct("Advice");
+            Expression::Fixed(query) => {
+                let mut debug_struct = f.debug_struct("Fixed");
+                match query.index {
+                    None => debug_struct.field("query_index", &query.index),
+                    Some(idx) => debug_struct.field("query_index", &idx),
+                };
                 debug_struct
-                    .field("query_index", index)
-                    .field("column_index", column_index)
-                    .field("rotation", rotation);
+                    .field("column_index", &query.column_index)
+                    .field("rotation", &query.rotation)
+                    .finish()
+            }
+            Expression::Advice(query) => {
+                let mut debug_struct = f.debug_struct("Advice");
+                match query.index {
+                    None => debug_struct.field("query_index", &query.index),
+                    Some(idx) => debug_struct.field("query_index", &idx),
+                };
+                debug_struct
+                    .field("column_index", &query.column_index)
+                    .field("rotation", &query.rotation);
                 // Only show advice's phase if it's not in first phase.
-                if *phase != FirstPhase.to_sealed() {
-                    debug_struct.field("phase", phase);
+                if query.phase != FirstPhase.to_sealed() {
+                    debug_struct.field("phase", &query.phase);
                 }
                 debug_struct.finish()
             }
-            Expression::Instance(InstanceQuery {
-                index,
-                column_index,
-                rotation,
-            }) => f
-                .debug_struct("Instance")
-                .field("query_index", index)
-                .field("column_index", column_index)
-                .field("rotation", rotation)
-                .finish(),
+            Expression::Instance(query) => {
+                let mut debug_struct = f.debug_struct("Instance");
+                match query.index {
+                    None => debug_struct.field("query_index", &query.index),
+                    Some(idx) => debug_struct.field("query_index", &idx),
+                };
+                debug_struct
+                    .field("column_index", &query.column_index)
+                    .field("rotation", &query.rotation)
+                    .finish()
+            }
             Expression::Challenge(challenge) => {
                 f.debug_tuple("Challenge").field(challenge).finish()
             }

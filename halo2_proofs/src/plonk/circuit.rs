@@ -54,7 +54,7 @@ impl<C: ColumnType> Column<C> {
     }
 
     /// Return expression from column at the current row
-    pub fn expr<F: Field>(&self) -> Expression<F> {
+    pub fn cur<F: Field>(&self) -> Expression<F> {
         self.query_cell(Rotation::cur())
     }
 
@@ -66,6 +66,11 @@ impl<C: ColumnType> Column<C> {
     /// Return expression from column at the previous row
     pub fn prev<F: Field>(&self) -> Expression<F> {
         self.query_cell(Rotation::prev())
+    }
+
+    /// Return expression from column at the specified row
+    pub fn at<F: Field>(&self, at: usize) -> Expression<F> {
+        self.query_cell(Rotation(at as i32))
     }
 }
 
@@ -2276,22 +2281,39 @@ impl<'a, F: Field> VirtualCells<'a, F> {
 
     /// Query a selector at the current position.
     pub fn query_selector(&mut self, selector: Selector) -> Expression<F> {
-        selector.expr()
+        self.queried_selectors.push(selector);
+        Expression::Selector(selector)
     }
 
     /// Query a fixed column at a relative position
     pub fn query_fixed(&mut self, column: Column<Fixed>, at: Rotation) -> Expression<F> {
-        column.query_cell(at)
+        self.queried_cells.push((column, at).into());
+        Expression::Fixed(FixedQuery {
+            index: Some(self.meta.query_fixed_index(column, at)),
+            column_index: column.index,
+            rotation: at,
+        })
     }
 
     /// Query an advice column at a relative position
     pub fn query_advice(&mut self, column: Column<Advice>, at: Rotation) -> Expression<F> {
-        column.query_cell(at)
+        self.queried_cells.push((column, at).into());
+        Expression::Advice(AdviceQuery {
+            index: Some(self.meta.query_advice_index(column, at)),
+            column_index: column.index,
+            rotation: at,
+            phase: column.column_type().phase,
+        })
     }
 
     /// Query an instance column at a relative position
     pub fn query_instance(&mut self, column: Column<Instance>, at: Rotation) -> Expression<F> {
-        column.query_cell(at)
+        self.queried_cells.push((column, at).into());
+        Expression::Instance(InstanceQuery {
+            index: Some(self.meta.query_instance_index(column, at)),
+            column_index: column.index,
+            rotation: at,
+        })
     }
 
     /// Query an Any column at a relative position

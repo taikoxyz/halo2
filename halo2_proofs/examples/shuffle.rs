@@ -68,19 +68,19 @@ impl<const W: usize> MyConfig<W> {
         meta.create_gate("z should start with 1", |meta| {
             let one = Expression::Constant(F::one());
 
-            vec![q_first.expr() * (one - z.expr())]
+            vec![q_first.expr() * (one - z.cur())]
         });
 
         meta.create_gate("z should end with 1", |meta| {
             let one = Expression::Constant(F::one());
 
-            vec![q_last.expr() * (one - z.expr())]
+            vec![q_last.expr() * (one - z.cur())]
         });
 
         meta.create_gate("z should have valid transition", |meta| {
             let q_shuffle = q_shuffle.expr();
-            let original = original.map(|advice| advice.expr());
-            let shuffled = shuffled.map(|advice| advice.expr());
+            let original = original.map(|advice| advice.cur());
+            let shuffled = shuffled.map(|advice| advice.cur());
             let [theta, gamma] = [theta, gamma].map(|challenge| challenge.expr());
 
             // Compress
@@ -96,7 +96,7 @@ impl<const W: usize> MyConfig<W> {
                 .unwrap();
 
             vec![
-                q_shuffle * (z.expr() * (original + gamma.clone()) - z.next() * (shuffled + gamma)),
+                q_shuffle * (z.cur() * (original + gamma.clone()) - z.next() * (shuffled + gamma)),
             ]
         });
 

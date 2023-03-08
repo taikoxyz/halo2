@@ -167,7 +167,10 @@ impl fmt::Display for Gate {
 
 impl<S: AsRef<str>> From<(usize, S)> for Gate {
     fn from((index, name): (usize, S)) -> Self {
-        Gate { index, name: name.as_ref().to_string() }
+        Gate {
+            index,
+            name: name.as_ref().to_string(),
+        }
     }
 }
 
@@ -204,7 +207,11 @@ impl fmt::Display for Constraint {
 
 impl<S: AsRef<str>> From<(Gate, usize, S)> for Constraint {
     fn from((gate, index, name): (Gate, usize, S)) -> Self {
-        Constraint { gate, index, name: name.as_ref().to_string() }
+        Constraint {
+            gate,
+            index,
+            name: name.as_ref().to_string(),
+        }
     }
 }
 

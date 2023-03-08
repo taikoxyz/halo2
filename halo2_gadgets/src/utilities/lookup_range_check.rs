@@ -589,7 +589,6 @@ mod tests {
                         offset: 1,
                     },
                 }]),
-
             );
         }
 

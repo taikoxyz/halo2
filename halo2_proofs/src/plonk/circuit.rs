@@ -616,14 +616,6 @@ pub trait Assignment<F: Field> {
         NR: Into<String>,
         N: FnOnce() -> NR;
 
-    // /// Allows the developer to include an annotation for an specific column within a `Region`.
-    // ///
-    // /// This is usually useful for debugging circuit failures.
-    // fn annotate_column<A, AR>(&mut self, annotation: A, column: Column<Any>)
-    //     where
-    //         A: FnOnce() -> AR,
-    //         AR: Into<String>;
-
     /// Allows the developer to include an annotation for an specific column within a `Region`.
     ///
     /// This is usually useful for debugging circuit failures.

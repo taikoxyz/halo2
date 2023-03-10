@@ -9,10 +9,11 @@ use std::time::{Duration, Instant};
 
 use blake2b_simd::blake2b;
 use ff::Field;
+use ff::FromUniformBytes;
+use group::Group;
 
 use crate::plonk::permutation::keygen::Assembly;
 use crate::{
-    arithmetic::{FieldExt, Group},
     circuit,
     plonk::{
         permutation,
@@ -88,7 +89,7 @@ impl Region {
 
 /// The value of a particular cell within the circuit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CellValue<F: Group + Field> {
+pub enum CellValue<F: Field> {
     /// An unassigned cell.
     Unassigned,
     /// A cell that has been assigned a value.
@@ -99,23 +100,23 @@ pub enum CellValue<F: Group + Field> {
 
 /// A value within an expression.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Ord, PartialOrd)]
-enum Value<F: Group + Field> {
+enum Value<F: Field> {
     Real(F),
     Poison,
 }
 
-impl<F: Group + Field> From<CellValue<F>> for Value<F> {
+impl<F: Field> From<CellValue<F>> for Value<F> {
     fn from(value: CellValue<F>) -> Self {
         match value {
             // Cells that haven't been explicitly assigned to, default to zero.
-            CellValue::Unassigned => Value::Real(F::zero()),
+            CellValue::Unassigned => Value::Real(F::ZERO),
             CellValue::Assigned(v) => Value::Real(v),
             CellValue::Poison(_) => Value::Poison,
         }
     }
 }
 
-impl<F: Group + Field> Neg for Value<F> {
+impl<F: Field> Neg for Value<F> {
     type Output = Self;
 
     fn neg(self) -> Self::Output {
@@ -126,7 +127,7 @@ impl<F: Group + Field> Neg for Value<F> {
     }
 }
 
-impl<F: Group + Field> Add for Value<F> {
+impl<F: Field> Add for Value<F> {
     type Output = Self;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -137,7 +138,7 @@ impl<F: Group + Field> Add for Value<F> {
     }
 }
 
-impl<F: Group + Field> Mul for Value<F> {
+impl<F: Field> Mul for Value<F> {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self::Output {
@@ -148,14 +149,14 @@ impl<F: Group + Field> Mul for Value<F> {
             (Value::Real(x), Value::Poison) | (Value::Poison, Value::Real(x))
                 if x.is_zero_vartime() =>
             {
-                Value::Real(F::zero())
+                Value::Real(F::ZERO)
             }
             _ => Value::Poison,
         }
     }
 }
 
-impl<F: Group + Field> Mul<F> for Value<F> {
+impl<F: Field> Mul<F> for Value<F> {
     type Output = Self;
 
     fn mul(self, rhs: F) -> Self::Output {
@@ -163,7 +164,7 @@ impl<F: Group + Field> Mul<F> for Value<F> {
             Value::Real(lhs) => Value::Real(lhs * rhs),
             // If poison is multiplied by zero, then we treat the poison as unconstrained
             // and we don't propagate it.
-            Value::Poison if rhs.is_zero_vartime() => Value::Real(F::zero()),
+            Value::Poison if rhs.is_zero_vartime() => Value::Real(F::ZERO),
             _ => Value::Poison,
         }
     }
@@ -181,12 +182,12 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 ///
 /// ```
 /// use halo2_proofs::{
-///     arithmetic::FieldExt,
 ///     circuit::{Layouter, SimpleFloorPlanner, Value},
 ///     dev::{FailureLocation, MockProver, VerifyFailure},
 ///     plonk::{Advice, Any, Circuit, Column, ConstraintSystem, Error, Selector},
 ///     poly::Rotation,
 /// };
+/// use ff::PrimeField;
 /// use halo2curves::pasta::Fp;
 /// const K: u32 = 5;
 ///
@@ -204,7 +205,7 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 ///     b: Value<u64>,
 /// }
 ///
-/// impl<F: FieldExt> Circuit<F> for MyCircuit {
+/// impl<F: PrimeField> Circuit<F> for MyCircuit {
 ///     type Config = MyConfig;
 ///     type FloorPlanner = SimpleFloorPlanner;
 ///
@@ -274,16 +275,18 @@ impl<F: Group + Field> Mul<F> for Value<F> {
 ///     }])
 /// );
 ///
-/// // If we provide a too-small K, we get an error.
-/// assert!(matches!(
-///     MockProver::<Fp>::run(2, &circuit, vec![]).unwrap_err(),
-///     Error::NotEnoughRowsAvailable {
-///         current_k,
-///     } if current_k == 2,
-/// ));
+/// // If we provide a too-small K, we get a panic.
+/// use std::panic;
+/// let result = panic::catch_unwind(|| {
+///     MockProver::<Fp>::run(2, &circuit, vec![]).unwrap_err()
+/// });
+/// assert_eq!(
+///     result.unwrap_err().downcast_ref::<String>().unwrap(),
+///     "n=4, minimum_rows=8, k=2"
+/// );
 /// ```
 #[derive(Debug)]
-pub struct MockProver<F: Group + Field> {
+pub struct MockProver<F: Field> {
     k: u32,
     n: u32,
     cs: ConstraintSystem<F>,
@@ -313,13 +316,13 @@ pub struct MockProver<F: Group + Field> {
     current_phase: sealed::Phase,
 }
 
-impl<F: Field + Group> MockProver<F> {
+impl<F: Field> MockProver<F> {
     fn in_phase<P: Phase>(&self, phase: P) -> bool {
         self.current_phase == phase.to_sealed()
     }
 }
 
-impl<F: Field + Group> Assignment<F> for MockProver<F> {
+impl<F: Field> Assignment<F> for MockProver<F> {
     fn enter_region<NR, N>(&mut self, name: N)
     where
         NR: Into<String>,
@@ -373,9 +376,13 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
             return Ok(());
         }
 
-        if !self.usable_rows.contains(&row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
+        assert!(
+            self.usable_rows.contains(&row),
+            "row={} not in usable_rows={:?}, k={}",
+            row,
+            self.usable_rows,
+            self.k,
+        );
 
         // Track that this selector was enabled. We require that all selectors are enabled
         // inside some region (i.e. no floating selectors).
@@ -397,15 +404,20 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         column: Column<Instance>,
         row: usize,
     ) -> Result<circuit::Value<F>, Error> {
-        if !self.usable_rows.contains(&row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
+        assert!(
+            self.usable_rows.contains(&row),
+            "row={}, usable_rows={:?}, k={}",
+            row,
+            self.usable_rows,
+            self.k,
+        );
 
-        self.instance
+        Ok(self
+            .instance
             .get(column.index())
             .and_then(|column| column.get(row))
             .map(|v| circuit::Value::known(*v))
-            .ok_or(Error::BoundsFailure)
+            .expect("bound failure"))
     }
 
     fn assign_advice<V, VR, A, AR>(
@@ -422,9 +434,13 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
         AR: Into<String>,
     {
         if self.in_phase(FirstPhase) {
-            if !self.usable_rows.contains(&row) {
-                return Err(Error::not_enough_rows_available(self.k));
-            }
+            assert!(
+                self.usable_rows.contains(&row),
+                "row={}, usable_rows={:?}, k={}",
+                row,
+                self.usable_rows,
+                self.k,
+            );
 
             if let Some(region) = self.current_region.as_mut() {
                 region.update_extent(column.into(), row);
@@ -442,12 +458,10 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
                     .advice
                     .get_mut(column.index())
                     .and_then(|v| v.get_mut(row))
-                    .ok_or(Error::BoundsFailure)?;
+                    .expect("bounds failure");
                 if let CellValue::Assigned(value) = value {
                     // Inconsistent assignment between different phases.
-                    if value != &to {
-                        return Err(Error::Synthesis);
-                    }
+                    assert_eq!(value, &to, "value={:?}, to={:?}", value, &to);
                 } else {
                     *value = CellValue::Assigned(to);
                 }
@@ -480,9 +494,13 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
             return Ok(());
         }
 
-        if !self.usable_rows.contains(&row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
+        assert!(
+            self.usable_rows.contains(&row),
+            "row={}, usable_rows={:?}, k={}",
+            row,
+            self.usable_rows,
+            self.k,
+        );
 
         if let Some(region) = self.current_region.as_mut() {
             region.update_extent(column.into(), row);
@@ -497,8 +515,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
             .fixed
             .get_mut(column.index())
             .and_then(|v| v.get_mut(row))
-            .ok_or(Error::BoundsFailure)? =
-            CellValue::Assigned(to().into_field().evaluate().assign()?);
+            .expect("bounds failure") = CellValue::Assigned(to().into_field().evaluate().assign()?);
 
         Ok(())
     }
@@ -514,9 +531,14 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
             return Ok(());
         }
 
-        if !self.usable_rows.contains(&left_row) || !self.usable_rows.contains(&right_row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
+        assert!(
+            self.usable_rows.contains(&left_row) && self.usable_rows.contains(&right_row),
+            "left_row={}, right_row={}, usable_rows={:?}, k={}",
+            left_row,
+            right_row,
+            self.usable_rows,
+            self.k,
+        );
 
         self.permutation
             .copy(left_column, left_row, right_column, right_row)
@@ -532,9 +554,13 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
             return Ok(());
         }
 
-        if !self.usable_rows.contains(&from_row) {
-            return Err(Error::not_enough_rows_available(self.k));
-        }
+        assert!(
+            self.usable_rows.contains(&from_row),
+            "row={}, usable_rows={:?}, k={}",
+            from_row,
+            self.usable_rows,
+            self.k,
+        );
 
         for row in self.usable_rows.clone().skip(from_row) {
             self.assign_fixed(|| "", col, row, || to)?;
@@ -564,7 +590,7 @@ impl<F: Field + Group> Assignment<F> for MockProver<F> {
     }
 }
 
-impl<F: FieldExt> MockProver<F> {
+impl<F: FromUniformBytes<64> + Ord> MockProver<F> {
     /// Runs a synthetic keygen-and-prove operation on the given circuit, collecting data
     /// about the constraints and their assignments.
     pub fn run<ConcreteCircuit: Circuit<F>>(
@@ -578,25 +604,31 @@ impl<F: FieldExt> MockProver<F> {
         let config = ConcreteCircuit::configure(&mut cs);
         let cs = cs;
 
-        if n < cs.minimum_rows() {
-            return Err(Error::not_enough_rows_available(k));
-        }
+        assert!(
+            n >= cs.minimum_rows(),
+            "n={}, minimum_rows={}, k={}",
+            n,
+            cs.minimum_rows(),
+            k,
+        );
 
-        if instance.len() != cs.num_instance_columns {
-            return Err(Error::InvalidInstances);
-        }
+        assert_eq!(instance.len(), cs.num_instance_columns);
 
         let instance = instance
             .into_iter()
             .map(|mut instance| {
-                if instance.len() > n - (cs.blinding_factors() + 1) {
-                    return Err(Error::InstanceTooLarge);
-                }
+                assert!(
+                    instance.len() <= n - (cs.blinding_factors() + 1),
+                    "instance.len={}, n={}, cs.blinding_factors={}",
+                    instance.len(),
+                    n,
+                    cs.blinding_factors()
+                );
 
-                instance.resize(n, F::zero());
-                Ok(instance)
+                instance.resize(n, F::ZERO);
+                instance
             })
-            .collect::<Result<Vec<_>, _>>()?;
+            .collect::<Vec<_>>();
 
         // Fixed columns contain no blinding factors.
         let fixed = vec![vec![CellValue::Unassigned; n]; cs.num_fixed_columns];
@@ -623,7 +655,7 @@ impl<F: FieldExt> MockProver<F> {
             let mut hash: [u8; 64] = blake2b(b"Halo2-MockProver").as_bytes().try_into().unwrap();
             iter::repeat_with(|| {
                 hash = blake2b(&hash).as_bytes().try_into().unwrap();
-                F::from_bytes_wide(&hash)
+                F::from_uniform_bytes(&hash)
             })
             .take(cs.num_challenges)
             .collect()
@@ -666,6 +698,16 @@ impl<F: FieldExt> MockProver<F> {
         }));
 
         Ok(prover)
+    }
+
+    /// Return the content of an advice column as assigned by the circuit.
+    pub fn advice_values(&self, column: Column<Advice>) -> &[CellValue<F>] {
+        &self.advice[column.index()]
+    }
+
+    /// Return the content of a fixed column as assigned by the circuit.
+    pub fn fixed_values(&self, column: Column<Fixed>) -> &[CellValue<F>] {
+        &self.fixed[column.index()]
     }
 
     /// Returns `Ok(())` if this `MockProver` is satisfied, or a list of errors indicating
@@ -773,7 +815,7 @@ impl<F: FieldExt> MockProver<F> {
                                 &|a, b| a + b,
                                 &|a, b| a * b,
                                 &|a, scalar| a * scalar,
-                                &Value::Real(F::zero()),
+                                &Value::Real(F::ZERO),
                             ) {
                                 Value::Real(x) if x.is_zero_vartime() => None,
                                 Value::Real(_) => Some(VerifyFailure::ConstraintNotSatisfied {
@@ -858,7 +900,7 @@ impl<F: FieldExt> MockProver<F> {
                             &|a, b| a + b,
                             &|a, b| a * b,
                             &|a, scalar| a * scalar,
-                            &Value::Real(F::zero()),
+                            &Value::Real(F::ZERO),
                         )
                     };
 
@@ -973,7 +1015,7 @@ impl<F: FieldExt> MockProver<F> {
 
             // Iterate over each column of the permutation
             self.permutation
-                .mapping
+                .mapping()
                 .iter()
                 .enumerate()
                 .flat_map(move |(column, values)| {
@@ -1146,7 +1188,7 @@ impl<F: FieldExt> MockProver<F> {
                                 &|a, b| a + b,
                                 &|a, b| a * b,
                                 &|a, scalar| a * scalar,
-                                &Value::Real(F::zero()),
+                                &Value::Real(F::ZERO),
                             ) {
                                 Value::Real(x) if x.is_zero_vartime() => None,
                                 Value::Real(_) => Some(VerifyFailure::ConstraintNotSatisfied {
@@ -1224,7 +1266,7 @@ impl<F: FieldExt> MockProver<F> {
                             &|a, b| a + b,
                             &|a, b| a * b,
                             &|a, scalar| a * scalar,
-                            &Value::Real(F::zero()),
+                            &Value::Real(F::ZERO),
                         )
                     };
 
@@ -1334,7 +1376,7 @@ impl<F: FieldExt> MockProver<F> {
 
             // Iterate over each column of the permutation
             self.permutation
-                .mapping
+                .mapping()
                 .iter()
                 .enumerate()
                 .flat_map(move |(column, values)| {

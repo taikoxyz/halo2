@@ -1,12 +1,14 @@
 use std::iter;
 
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::Curve;
-use rand_core::RngCore;
+use rand_chacha::ChaCha20Rng;
+use rand_core::{RngCore, SeedableRng};
+use rayon::{current_num_threads, prelude::*};
 
 use super::Argument;
 use crate::{
-    arithmetic::{eval_polynomial, CurveAffine, FieldExt},
+    arithmetic::{eval_polynomial, CurveAffine},
     plonk::{ChallengeX, ChallengeY, Error},
     poly::{
         self,
@@ -47,10 +49,31 @@ impl<C: CurveAffine> Argument<C> {
         transcript: &mut T,
     ) -> Result<Committed<C>, Error> {
         // Sample a random polynomial of degree n - 1
-        let mut random_poly = domain.empty_coeff();
-        for coeff in random_poly.iter_mut() {
-            *coeff = C::Scalar::random(&mut rng);
-        }
+        let n_threads = current_num_threads();
+        let n = 1usize << domain.k() as usize;
+        let n_chunks = n_threads + if n % n_threads != 0 { 1 } else { 0 };
+        let mut rand_vec = vec![C::Scalar::ZERO; n];
+
+        let mut thread_seeds: Vec<ChaCha20Rng> = (0..n_chunks)
+            .into_iter()
+            .map(|_| {
+                let mut seed = [0u8; 32];
+                rng.fill_bytes(&mut seed);
+                ChaCha20Rng::from_seed(seed)
+            })
+            .collect();
+
+        thread_seeds
+            .par_iter_mut()
+            .zip_eq(rand_vec.par_chunks_mut(n / n_threads))
+            .for_each(|(mut rng, chunk)| {
+                chunk
+                    .iter_mut()
+                    .for_each(|v| *v = C::Scalar::random(&mut rng))
+            });
+
+        let random_poly: Polynomial<C::Scalar, Coeff> = domain.coeff_from_vec(rand_vec);
+
         // Sample a random blinding factor
         let random_blind = Blind(C::Scalar::random(rng));
 
@@ -138,9 +161,7 @@ impl<C: CurveAffine> Constructed<C> {
             .h_blinds
             .iter()
             .rev()
-            .fold(Blind(C::Scalar::zero()), |acc, eval| {
-                acc * Blind(xn) + *eval
-            });
+            .fold(Blind(C::Scalar::ZERO), |acc, eval| acc * Blind(xn) + *eval);
 
         let random_eval = eval_polynomial(&self.committed.random_poly, *x);
         transcript.write_scalar(random_eval)?;

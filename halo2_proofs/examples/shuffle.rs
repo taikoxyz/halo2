@@ -12,7 +12,7 @@ use halo2_proofs::{
             multiopen::{ProverIPA, VerifierIPA},
             strategy::AccumulatorStrategy,
         },
-        Rotation, VerificationStrategy,
+        VerificationStrategy,
     },
     transcript::{
         Blake2bRead, Blake2bWrite, Challenge255, TranscriptReadBuffer, TranscriptWriterBuffer,
@@ -63,19 +63,19 @@ impl<const W: usize> MyConfig<W> {
         // Second phase
         let z = meta.advice_column_in(SecondPhase);
 
-        meta.create_gate("z should start with 1", |meta| {
+        meta.create_gate("z should start with 1", |_| {
             let one = Expression::Constant(F::ONE);
 
             vec![q_first.expr() * (one - z.cur())]
         });
 
-        meta.create_gate("z should end with 1", |meta| {
+        meta.create_gate("z should end with 1", |_| {
             let one = Expression::Constant(F::ONE);
 
             vec![q_last.expr() * (one - z.cur())]
         });
 
-        meta.create_gate("z should have valid transition", |meta| {
+        meta.create_gate("z should have valid transition", |_| {
             let q_shuffle = q_shuffle.expr();
             let original = original.map(|advice| advice.cur());
             let shuffled = shuffled.map(|advice| advice.cur());

@@ -97,36 +97,13 @@ impl<F: FieldExt> Argument<F> {
         // Get values of table expressions involved in the lookup and compress them
         let compressed_table_expression = compress_expressions(&self.table_expressions);
 
+        let blinding_factors = pk.vk.cs.blinding_factors();
+
         // compute m(X)
-        /*
-           let x = vec![1u8, 2, 3, 1, 2, 3];
-           let map: BTreeMap<u8, usize> = x.iter().enumerate().map(|(i, &ti)| (ti, i)).collect();
-           {
-               key: 1 position: 3
-               key: 2 position: 4
-               key: 3 position: 5
-           }
-           This will give m_vals to be != 0 for positions > blinders, that's why we need to take first occurrences
-           This also allows skipping last part of m(X) / (t(X) + α) since it's just zero
-
-           let x = vec![1u8, 2, 3, 1, 2, 3, blind1, blind2];
-           let table = vec![1, 2, 2, 3, 2, 3, 1, 1]
-        */
-
-        let mut table_index_value_mapping: BTreeMap<C::Scalar, usize> = BTreeMap::default();
-        for (i, ti) in compressed_table_expression.iter().enumerate() {
-            if table_index_value_mapping.get(ti).is_none() {
-                table_index_value_mapping.insert(*ti, i);
-            }
-        }
-
-        // // TODO test equivalence with above mapping
-        // let blinding_factors = pk.vk.cs.blinding_factors();
-        // let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression.iter().take(params.n() as usize - blinding_factors - 1).enumerate().map(|(i, &x)| (x, i)).collect();
+        let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression.iter().take(params.n() as usize - blinding_factors - 1).enumerate().map(|(i, &x)| (x, i)).collect();
 
         let mut m_values = domain.empty_lagrange();
 
-        let blinding_factors = pk.vk.cs.blinding_factors();
         compressed_input_expression
             .iter()
             .take(params.n() as usize - blinding_factors - 1)
@@ -258,7 +235,7 @@ impl<C: CurveAffine> Prepared<C> {
         assert_eq!(phi.len(), params.n() as usize);
         let phi = pk.vk.domain.lagrange_from_vec(phi);
 
-        // #[cfg(feature = "sanity-checks")]
+        #[cfg(feature = "sanity-checks")]
         // This test works only with intermediate representations in this method.
         // It can be used for debugging purposes.
         {

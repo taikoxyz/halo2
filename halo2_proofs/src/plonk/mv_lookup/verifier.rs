@@ -39,9 +39,7 @@ impl<F: FieldExt> Argument<F> {
     ) -> Result<PreparedCommitments<C>, Error> {
         let m_commitment = transcript.read_point()?;
 
-        Ok(PreparedCommitments {
-            m_commitment,
-        })
+        Ok(PreparedCommitments { m_commitment })
     }
 }
 
@@ -54,7 +52,6 @@ impl<C: CurveAffine> PreparedCommitments<C> {
         transcript: &mut T,
     ) -> Result<Committed<C>, Error> {
         let phi_commitment = transcript.read_point()?;
-        println!("verifier phi_commitment: {:?}", phi_commitment);
 
         Ok(Committed {
             prepared: self,
@@ -126,20 +123,24 @@ impl<C: CurveAffine> Evaluated<C> {
 
             let lhs = tau * fi * (self.phi_next_eval - self.phi_eval);
 
-            let rhs = {
-                tau * fi * (fi.invert().unwrap() - self.m_eval * tau.invert().unwrap())
-            };
+            let rhs = { tau * fi * (fi.invert().unwrap() - self.m_eval * tau.invert().unwrap()) };
 
             (lhs - rhs) * active_rows
-
-            // // phi[0] = 0 works
-            // l_0 * self.phi_eval
-
-            // // phi[u] = 0 works
-            // l_last * self.phi_eval
         };
 
-        iter::once(grand_sum_expression())
+        std::iter::empty()
+            .chain(
+                // phi[0] = 0
+                Some(l_0 * self.phi_eval),
+            )
+            .chain(
+                // phi[u] = 0
+                Some(l_last * self.phi_eval),
+            )
+            .chain(
+                // l_last(X) * (z(X)^2 - z(X)) = 0
+                Some(grand_sum_expression()),
+            )
     }
 
     pub(in crate::plonk) fn queries<'r, M: MSM<C> + 'r>(

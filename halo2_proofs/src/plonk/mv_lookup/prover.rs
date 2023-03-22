@@ -19,7 +19,7 @@ use group::{
     Curve,
 };
 use rand_core::RngCore;
-use std::collections::{HashSet, BTreeSet};
+use std::collections::{BTreeSet, HashSet};
 use std::{any::TypeId, convert::TryInto, num::ParseIntError, ops::Index};
 use std::{
     collections::BTreeMap,
@@ -36,8 +36,6 @@ pub(in crate::plonk) struct Prepared<C: CurveAffine> {
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Committed<C: CurveAffine> {
-    pub(in crate::plonk) input_poly: Polynomial<C::Scalar, Coeff>,
-    pub(in crate::plonk) table_poly: Polynomial<C::Scalar, Coeff>,
     pub(in crate::plonk) m_poly: Polynomial<C::Scalar, Coeff>,
     pub(in crate::plonk) phi_poly: Polynomial<C::Scalar, Coeff>,
 }
@@ -101,21 +99,21 @@ impl<F: FieldExt> Argument<F> {
 
         // compute m(X)
         /*
-            let x = vec![1u8, 2, 3, 1, 2, 3];
-            let map: BTreeMap<u8, usize> = x.iter().enumerate().map(|(i, &ti)| (ti, i)).collect();
-            {
-                key: 1 position: 3
-                key: 2 position: 4
-                key: 3 position: 5
-            }
-            This will give m_vals to be != 0 for positions > blinders, that's why we need to take first occurrences
-            This also allows skipping last part of m(X) / (t(X) + α) since it's just zero
+           let x = vec![1u8, 2, 3, 1, 2, 3];
+           let map: BTreeMap<u8, usize> = x.iter().enumerate().map(|(i, &ti)| (ti, i)).collect();
+           {
+               key: 1 position: 3
+               key: 2 position: 4
+               key: 3 position: 5
+           }
+           This will give m_vals to be != 0 for positions > blinders, that's why we need to take first occurrences
+           This also allows skipping last part of m(X) / (t(X) + α) since it's just zero
 
-            let x = vec![1u8, 2, 3, 1, 2, 3, blind1, blind2];
-            let table = vec![1, 2, 2, 3, 2, 3, 1, 1]
-         */
+           let x = vec![1u8, 2, 3, 1, 2, 3, blind1, blind2];
+           let table = vec![1, 2, 2, 3, 2, 3, 1, 1]
+        */
 
-        let mut table_index_value_mapping: BTreeMap<C::Scalar, usize> = BTreeMap::default(); 
+        let mut table_index_value_mapping: BTreeMap<C::Scalar, usize> = BTreeMap::default();
         for (i, ti) in compressed_table_expression.iter().enumerate() {
             if table_index_value_mapping.get(ti).is_none() {
                 table_index_value_mapping.insert(*ti, i);
@@ -129,15 +127,24 @@ impl<F: FieldExt> Argument<F> {
         let mut m_values = domain.empty_lagrange();
 
         let blinding_factors = pk.vk.cs.blinding_factors();
-        compressed_input_expression.iter().take(params.n() as usize - blinding_factors - 1).for_each(|fi| {
-            let index = table_index_value_mapping.get(fi).expect(&format!("in lookup: {}, value: {:?} not in table", self.name, fi));
-            m_values[*index] += C::Scalar::one();
-        });
+        compressed_input_expression
+            .iter()
+            .take(params.n() as usize - blinding_factors - 1)
+            .for_each(|fi| {
+                let index = table_index_value_mapping.get(fi).expect(&format!(
+                    "in lookup: {}, value: {:?} not in table",
+                    self.name, fi
+                ));
+                m_values[*index] += C::Scalar::one();
+            });
 
-        #[cfg(feature = "sanity-checks")] 
+        #[cfg(feature = "sanity-checks")]
         {
-            // check that m is zero after blinders 
-            let invalid_ms = m_values.iter().skip(params.n() as usize - blinding_factors).collect::<Vec<_>>();
+            // check that m is zero after blinders
+            let invalid_ms = m_values
+                .iter()
+                .skip(params.n() as usize - blinding_factors)
+                .collect::<Vec<_>>();
             assert_eq!(invalid_ms.len(), blinding_factors);
             for mi in invalid_ms {
                 assert_eq!(*mi, C::Scalar::zero());
@@ -146,7 +153,10 @@ impl<F: FieldExt> Argument<F> {
             // check sums
             let alpha = C::Scalar::random(&mut rng);
             let mut lhs_sum = C::Scalar::zero();
-            for &fi in compressed_input_expression.iter().take(params.n() as usize - blinding_factors - 1) {
+            for &fi in compressed_input_expression
+                .iter()
+                .take(params.n() as usize - blinding_factors - 1)
+            {
                 lhs_sum += (fi + alpha).invert().unwrap();
             }
 
@@ -162,7 +172,7 @@ impl<F: FieldExt> Argument<F> {
         let blind = Blind(C::Scalar::zero());
         let m_commitment = params.commit_lagrange(&m_values, blind).to_affine();
 
-        // write commitment of m(X) to transcript 
+        // write commitment of m(X) to transcript
         transcript.write_point(m_commitment)?;
 
         Ok(Prepared {
@@ -190,28 +200,32 @@ impl<C: CurveAffine> Prepared<C> {
     ) -> Result<Committed<C>, Error> {
         let mut input_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
 
-        parallelize(&mut input_log_derivatives, |input_log_derivatives, start| {
-            for (input_log_derivative, fi) in input_log_derivatives
-                .iter_mut()
-                .zip(self.compressed_input_expression[start..].iter())
-            {
-                *input_log_derivative = *beta + fi;
-            }
-        });
+        parallelize(
+            &mut input_log_derivatives,
+            |input_log_derivatives, start| {
+                for (input_log_derivative, fi) in input_log_derivatives
+                    .iter_mut()
+                    .zip(self.compressed_input_expression[start..].iter())
+                {
+                    *input_log_derivative = *beta + fi;
+                }
+            },
+        );
         input_log_derivatives.iter_mut().batch_invert();
 
-
         let mut table_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
-        parallelize(&mut table_log_derivatives, |table_log_derivatives, start| {
-            for (table_log_derivative, ti) in table_log_derivatives
-                .iter_mut()
-                .zip(self.compressed_table_expression[start..].iter())
-            {
-                *table_log_derivative = *beta + ti;
-            }
-        });
+        parallelize(
+            &mut table_log_derivatives,
+            |table_log_derivatives, start| {
+                for (table_log_derivative, ti) in table_log_derivatives
+                    .iter_mut()
+                    .zip(self.compressed_table_expression[start..].iter())
+                {
+                    *table_log_derivative = *beta + ti;
+                }
+            },
+        );
         table_log_derivatives.iter_mut().batch_invert();
-
 
         let mut log_derivatives_diff = vec![C::Scalar::zero(); params.n() as usize];
         parallelize(&mut log_derivatives_diff, |log_derivatives_diff, start| {
@@ -220,7 +234,6 @@ impl<C: CurveAffine> Prepared<C> {
                 .zip(input_log_derivatives[start..].iter())
                 .zip(table_log_derivatives[start..].iter())
                 .zip(self.m_values[start..].iter())
-
             {
                 // (1/(f_i + α) - m(X) / (t(X) + α))
                 *log_derivative_diff = *fi - *mi * *ti;
@@ -256,14 +269,22 @@ impl<C: CurveAffine> Prepared<C> {
             for i in 0..u {
                 let lhs = {
                     // ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X))
-                    (*beta + self.compressed_input_expression[i]) *  (*beta + self.compressed_table_expression[i]) * (phi[i + 1] - phi[i])
+                    (*beta + self.compressed_input_expression[i])
+                        * (*beta + self.compressed_table_expression[i])
+                        * (phi[i + 1] - phi[i])
                 };
 
                 let rhs = {
                     // (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
-                    (*beta + self.compressed_input_expression[i]) * (*beta + self.compressed_table_expression[i]) *
-                    ((*beta + self.compressed_input_expression[i]).invert().unwrap() -
-                        self.m_values[i] * (*beta + self.compressed_table_expression[i]).invert().unwrap())
+                    (*beta + self.compressed_input_expression[i])
+                        * (*beta + self.compressed_table_expression[i])
+                        * ((*beta + self.compressed_input_expression[i])
+                            .invert()
+                            .unwrap()
+                            - self.m_values[i]
+                                * (*beta + self.compressed_table_expression[i])
+                                    .invert()
+                                    .unwrap())
                 };
 
                 assert_eq!(lhs - rhs, C::Scalar::zero());
@@ -279,8 +300,6 @@ impl<C: CurveAffine> Prepared<C> {
         transcript.write_point(phi_commitment)?;
 
         Ok(Committed {
-            input_poly: pk.vk.domain.lagrange_to_coeff(self.compressed_input_expression),
-            table_poly: pk.vk.domain.lagrange_to_coeff(self.compressed_table_expression),
             m_poly: pk.vk.domain.lagrange_to_coeff(self.m_values),
             phi_poly: pk.vk.domain.lagrange_to_coeff(phi),
         })

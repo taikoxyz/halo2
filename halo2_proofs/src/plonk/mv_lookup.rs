@@ -47,10 +47,10 @@ impl<F: Field> Argument<F> {
         }
 
         /*
-            q(X) = ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))) mod zH(X)
-                = table_degree + input_degree + 1 - 1
+            q(X) = (1 - (q_last + q_blind))(((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))))
+                = table_degree + input_degree + 2
         */
-        table_degree + input_degree
+        std::cmp::max(4, input_degree + table_degree + 2)
     }
 
     /// Returns input of this argument

@@ -1,7 +1,9 @@
 use crate::multicore;
 use crate::plonk::lookup::prover::Committed;
 use crate::plonk::permutation::Argument;
-use crate::plonk::{mv_lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey};
+use crate::plonk::{
+    mv_lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey,
+};
 use crate::poly::Basis;
 use crate::{
     arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
@@ -124,8 +126,6 @@ pub enum Calculation {
     Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a simple assignment
     Store(ValueSource),
-    /// This is an inverse 
-    Inverse(ValueSource),
 }
 
 impl Calculation {
@@ -177,7 +177,6 @@ impl Calculation {
                 value
             }
             Calculation::Store(v) => get_value(v),
-            Calculation::Inverse(v) => get_value(v).invert().unwrap()
         }
     }
 }
@@ -188,7 +187,7 @@ pub struct Evaluator<C: CurveAffine> {
     ///  Custom gates evalution
     pub custom_gates: GraphEvaluator<C>,
     ///  Lookups evalution
-    pub lookups: Vec<GraphEvaluator<C>>,
+    pub lookups: Vec<(GraphEvaluator<C>, GraphEvaluator<C>)>,
 }
 
 /// GraphEvaluator
@@ -244,9 +243,10 @@ impl<C: CurveAffine> Evaluator<C> {
 
         // Lookups
         for lookup in cs.lookups.iter() {
-            let mut graph = GraphEvaluator::default();
+            let mut graph_table = GraphEvaluator::default();
+            let mut graph_input = GraphEvaluator::default();
 
-            let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
+            let evaluate_lc = |graph: &mut GraphEvaluator<C>, expressions: &Vec<Expression<_>>| {
                 let parts = expressions
                     .iter()
                     .map(|expr| graph.add_expression(expr))
@@ -259,21 +259,25 @@ impl<C: CurveAffine> Evaluator<C> {
             };
 
             // Input coset
-            let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
+            let compressed_input_coset = evaluate_lc(&mut graph_input, &lookup.input_expressions);
             // table coset
-            let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
-            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            let right_gamma = graph.add_calculation(Calculation::Add(
-                compressed_table_coset,
-                ValueSource::Gamma(),
-            ));
-            let lc = graph.add_calculation(Calculation::Add(
+            let compressed_table_coset = evaluate_lc(&mut graph_table, &lookup.table_expressions);
+
+            graph_input.add_calculation(Calculation::Add(
                 compressed_input_coset,
                 ValueSource::Beta(),
             ));
-            graph.add_calculation(Calculation::Mul(lc, right_gamma));
 
-            ev.lookups.push(graph);
+            graph_table.add_calculation(Calculation::Add(
+                compressed_table_coset,
+                ValueSource::Beta(),
+            ));
+
+            /*
+                a) 1/(f + beta)
+                b) 1/(t + beta)
+            */
+            ev.lookups.push((graph_input, graph_table));
         }
 
         ev
@@ -501,66 +505,72 @@ impl<C: CurveAffine> Evaluator<C> {
                         // Calculated here so these only have to be kept in memory for the short time
                         // they are actually needed.
                         let phi_coset = pk.vk.domain.coeff_to_extended_part(lookup.phi_poly.clone(), current_extended_omega);
-                        let input_coset = pk.vk.domain.coeff_to_extended_part(lookup.input_poly.clone(), current_extended_omega);
-                        let table_coset = pk.vk.domain.coeff_to_extended_part(lookup.table_poly.clone(), current_extended_omega);
                         let m_coset = pk.vk.domain.coeff_to_extended_part(lookup.m_poly.clone(), current_extended_omega);
 
                         // Lookup constraints
                         parallelize(&mut values, |values, start| {
-                            let lookup_evaluator = &self.lookups[n];
-                            let mut eval_data = lookup_evaluator.instance();
+                            let (input_lookup_evaluator, table_lookup_evaluator) = &self.lookups[n];
+                            let mut input_eval_data = input_lookup_evaluator.instance();
+                            let mut table_eval_data = table_lookup_evaluator.instance();
+
                             for (i, value) in values.iter_mut().enumerate() {
                                 let idx = start + i;
 
-                                // let table_value = lookup_evaluator.evaluate(
-                                //     &mut eval_data,
-                                //     fixed,
-                                //     advice,
-                                //     instance,
-                                //     challenges,
-                                //     &beta,
-                                //     &gamma,
-                                //     &theta,
-                                //     &y,
-                                //     &C::ScalarExt::zero(),
-                                //     idx,
-                                //     rot_scale,
-                                //     isize,
-                                // );
+                                // f_i(X) + α
+                                let input_value = input_lookup_evaluator.evaluate(
+                                    &mut input_eval_data,
+                                    fixed,
+                                    advice,
+                                    instance,
+                                    challenges,
+                                    &beta,
+                                    &gamma,
+                                    &theta,
+                                    &y,
+                                    &C::ScalarExt::zero(),
+                                    idx,
+                                    rot_scale,
+                                    isize,
+                                );
+
+                                // t(X) + α
+                                let table_value = table_lookup_evaluator.evaluate(
+                                    &mut table_eval_data,
+                                    fixed,
+                                    advice,
+                                    instance,
+                                    challenges,
+                                    &beta,
+                                    &gamma,
+                                    &theta,
+                                    &y,
+                                    &C::ScalarExt::zero(),
+                                    idx,
+                                    rot_scale,
+                                    isize,
+                                );
 
                                 let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                                let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
-
-                                // f_i(X) + α
-                                let fi_coset = input_coset[idx] + beta;
-                                let fi_coset_inv = fi_coset.invert().unwrap();
-
-                                // this should be used from evaluator probably (debugging with this value)
-                                // t(X) + α
-                                let ti_coset = table_coset[idx] + beta;
-                                let ti_coset_inv = ti_coset.invert().unwrap();
 
                                 let lhs = {
                                     // (t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X))
-                                    ti_coset * fi_coset * (phi_coset[r_next] - phi_coset[idx])
+                                    table_value * input_value * (phi_coset[r_next] - phi_coset[idx])
                                 };
 
                                 let rhs = {
-                                    // (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
-                                    ti_coset * fi_coset * (fi_coset_inv - m_coset[idx] * ti_coset_inv)
+                                    //   (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
+                                    // = (t(X) + α) - m(X) * (f_i + α)
+                                    table_value - m_coset[idx] * input_value
                                 };
 
+                                // phi[0] = 0
+                                *value = *value * y + l0[idx] * phi_coset[idx];
+
+                                // phi[u] = 0
+                                *value = *value * y + l_last[idx] * phi_coset[idx];
+
                                 // q(X) = ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))) mod zH(X)
-                                *value = *value
-                                    * y
-                                    + (lhs - rhs)
-                                        * l_active_row[idx];
-
-                                // // phi[0] = 0 works
-                                // *value = *value * y + l0[idx] * phi_coset[idx];
-
-                                // // phi[u] = 0 works
-                                // *value = *value * y + l_last[idx] * phi_coset[idx];
+                                *value = *value * y + (lhs - rhs) * l_active_row[idx];
                             }
                         });
                     }

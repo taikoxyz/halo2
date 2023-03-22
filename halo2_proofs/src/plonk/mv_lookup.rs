@@ -2,8 +2,8 @@ use super::circuit::Expression;
 use ff::Field;
 use std::fmt::{self, Debug};
 
-// pub(crate) mod prover;
-// pub(crate) mod verifier;
+pub(crate) mod prover;
+pub(crate) mod verifier;
 
 #[derive(Clone)]
 pub struct Argument<F: Field> {

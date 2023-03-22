@@ -1,7 +1,7 @@
 use crate::multicore;
 use crate::plonk::lookup::prover::Committed;
 use crate::plonk::permutation::Argument;
-use crate::plonk::{lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey};
+use crate::plonk::{mv_lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey};
 use crate::poly::Basis;
 use crate::{
     arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
@@ -124,6 +124,8 @@ pub enum Calculation {
     Horner(ValueSource, Vec<ValueSource>, ValueSource),
     /// This is a simple assignment
     Store(ValueSource),
+    /// This is an inverse 
+    Inverse(ValueSource),
 }
 
 impl Calculation {
@@ -175,6 +177,7 @@ impl Calculation {
                 value
             }
             Calculation::Store(v) => get_value(v),
+            Calculation::Inverse(v) => get_value(v).invert().unwrap()
         }
     }
 }
@@ -287,7 +290,7 @@ impl<C: CurveAffine> Evaluator<C> {
         beta: C::ScalarExt,
         gamma: C::ScalarExt,
         theta: C::ScalarExt,
-        lookups: &[Vec<lookup::prover::Committed<C>>],
+        lookups: &[Vec<mv_lookup::prover::Committed<C>>],
         permutations: &[permutation::prover::Committed<C>],
     ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff> {
         let domain = &pk.vk.domain;
@@ -497,18 +500,10 @@ impl<C: CurveAffine> Evaluator<C> {
                         // Polynomials required for this lookup.
                         // Calculated here so these only have to be kept in memory for the short time
                         // they are actually needed.
-                        let product_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.product_poly.clone(),
-                            current_extended_omega,
-                        );
-                        let permuted_input_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.permuted_input_poly.clone(),
-                            current_extended_omega,
-                        );
-                        let permuted_table_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.permuted_table_poly.clone(),
-                            current_extended_omega,
-                        );
+                        let phi_coset = pk.vk.domain.coeff_to_extended_part(lookup.phi_poly.clone(), current_extended_omega);
+                        let input_coset = pk.vk.domain.coeff_to_extended_part(lookup.input_poly.clone(), current_extended_omega);
+                        let table_coset = pk.vk.domain.coeff_to_extended_part(lookup.table_poly.clone(), current_extended_omega);
+                        let m_coset = pk.vk.domain.coeff_to_extended_part(lookup.m_poly.clone(), current_extended_omega);
 
                         // Lookup constraints
                         parallelize(&mut values, |values, start| {
@@ -517,58 +512,55 @@ impl<C: CurveAffine> Evaluator<C> {
                             for (i, value) in values.iter_mut().enumerate() {
                                 let idx = start + i;
 
-                                let table_value = lookup_evaluator.evaluate(
-                                    &mut eval_data,
-                                    fixed,
-                                    advice,
-                                    instance,
-                                    challenges,
-                                    &beta,
-                                    &gamma,
-                                    &theta,
-                                    &y,
-                                    &C::ScalarExt::zero(),
-                                    idx,
-                                    rot_scale,
-                                    isize,
-                                );
+                                // let table_value = lookup_evaluator.evaluate(
+                                //     &mut eval_data,
+                                //     fixed,
+                                //     advice,
+                                //     instance,
+                                //     challenges,
+                                //     &beta,
+                                //     &gamma,
+                                //     &theta,
+                                //     &y,
+                                //     &C::ScalarExt::zero(),
+                                //     idx,
+                                //     rot_scale,
+                                //     isize,
+                                // );
 
                                 let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
                                 let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
 
-                                let a_minus_s =
-                                    permuted_input_coset[idx] - permuted_table_coset[idx];
-                                // l_0(X) * (1 - z(X)) = 0
-                                *value = *value * y + ((one - product_coset[idx]) * l0[idx]);
-                                // l_last(X) * (z(X)^2 - z(X)) = 0
-                                *value = *value * y
-                                    + ((product_coset[idx] * product_coset[idx]
-                                        - product_coset[idx])
-                                        * l_last[idx]);
-                                // (1 - (l_last(X) + l_blind(X))) * (
-                                //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-                                //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta)
-                                //          (\theta^{m-1} s_0(X) + ... + s_{m-1}(X) + \gamma)
-                                // ) = 0
-                                *value = *value * y
-                                    + ((product_coset[r_next]
-                                        * (permuted_input_coset[idx] + beta)
-                                        * (permuted_table_coset[idx] + gamma)
-                                        - product_coset[idx] * table_value)
-                                        * l_active_row[idx]);
-                                // Check that the first values in the permuted input expression and permuted
-                                // fixed expression are the same.
-                                // l_0(X) * (a'(X) - s'(X)) = 0
-                                *value = *value * y + (a_minus_s * l0[idx]);
-                                // Check that each value in the permuted lookup input expression is either
-                                // equal to the value above it, or the value at the same index in the
-                                // permuted table expression.
-                                // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
-                                *value = *value * y
-                                    + (a_minus_s
-                                        * (permuted_input_coset[idx]
-                                            - permuted_input_coset[r_prev])
-                                        * l_active_row[idx]);
+                                // f_i(X) + α
+                                let fi_coset = input_coset[idx] + beta;
+                                let fi_coset_inv = fi_coset.invert().unwrap();
+
+                                // this should be used from evaluator probably (debugging with this value)
+                                // t(X) + α
+                                let ti_coset = table_coset[idx] + beta;
+                                let ti_coset_inv = ti_coset.invert().unwrap();
+
+                                let lhs = {
+                                    // (t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X))
+                                    ti_coset * fi_coset * (phi_coset[r_next] - phi_coset[idx])
+                                };
+
+                                let rhs = {
+                                    // (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
+                                    ti_coset * fi_coset * (fi_coset_inv - m_coset[idx] * ti_coset_inv)
+                                };
+
+                                // q(X) = ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))) mod zH(X)
+                                *value = *value
+                                    * y
+                                    + (lhs - rhs)
+                                        * l_active_row[idx];
+
+                                // // phi[0] = 0 works
+                                // *value = *value * y + l0[idx] * phi_coset[idx];
+
+                                // // phi[u] = 0 works
+                                // *value = *value * y + l_last[idx] * phi_coset[idx];
                             }
                         });
                     }

@@ -8,7 +8,7 @@ use std::{
     ops::{Neg, Sub},
 };
 
-use super::{lookup, permutation, Assigned, Error};
+use super::{mv_lookup, permutation, Assigned, Error};
 use crate::dev::metadata;
 use crate::{
     circuit::{Layouter, Region, Value},
@@ -1404,7 +1404,7 @@ pub struct ConstraintSystem<F: Field> {
 
     // Vector of lookup arguments, where each corresponds to a sequence of
     // input expressions and a sequence of table expressions involved in the lookup.
-    pub lookups: Vec<lookup::Argument<F>>,
+    pub(crate) lookups: Vec<mv_lookup::Argument<F>>,
 
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to their annotation.
     pub(crate) general_column_annotations: HashMap<metadata::Column, String>,
@@ -1431,7 +1431,7 @@ pub struct PinnedConstraintSystem<'a, F: Field> {
     instance_queries: &'a Vec<(Column<Instance>, Rotation)>,
     fixed_queries: &'a Vec<(Column<Fixed>, Rotation)>,
     permutation: &'a permutation::Argument,
-    lookups: &'a Vec<lookup::Argument<F>>,
+    lookups: &'a Vec<mv_lookup::Argument<F>>,
     constants: &'a Vec<Column<Fixed>>,
     minimum_degree: &'a Option<usize>,
 }
@@ -1568,7 +1568,7 @@ impl<F: Field> ConstraintSystem<F> {
 
         let index = self.lookups.len();
 
-        self.lookups.push(lookup::Argument::new(name, table_map));
+        self.lookups.push(mv_lookup::Argument::new(name, table_map));
 
         index
     }
@@ -1587,7 +1587,7 @@ impl<F: Field> ConstraintSystem<F> {
 
         let index = self.lookups.len();
 
-        self.lookups.push(lookup::Argument::new(name, table_map));
+        self.lookups.push(mv_lookup::Argument::new(name, table_map));
 
         index
     }
@@ -2135,7 +2135,7 @@ impl<F: Field> ConstraintSystem<F> {
     }
 
     /// Returns lookup arguments
-    pub fn lookups(&self) -> &Vec<lookup::Argument<F>> {
+    pub fn lookups(&self) -> &Vec<mv_lookup::Argument<F>> {
         &self.lookups
     }
 

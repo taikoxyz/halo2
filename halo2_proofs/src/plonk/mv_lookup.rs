@@ -5,6 +5,36 @@ use std::fmt::{self, Debug};
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
+/*
+   map (table_vec_expressions, [input_expressions])
+
+   lookup_arguments: [(table_vec_expressions, [input_expressions)]
+
+   // iter this map:
+   {
+       table_vec_expressions, vec<vec<input_expressions>>
+
+       // compute degree, if it's bigger than some bound
+           -> crete new lookup_argument: table_vec_expressions, empty
+   }
+*/
+
+#[derive(Clone, Debug)]
+pub struct HybridArgument<F: Field> {
+    pub(crate) table_expressions: Vec<Expression<F>>,
+    pub(crate) inputs_expressions: Vec<Vec<Expression<F>>>,
+}
+
+impl<F: Field> HybridArgument<F> {
+    /// Constructs a new lookup argument.
+    pub fn new(table: &Vec<Expression<F>>, input: &Vec<Vec<Expression<F>>>) -> Self {
+        Self {
+            table_expressions: table.clone(),
+            inputs_expressions: input.clone(),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Argument<F: Field> {
     pub(crate) name: &'static str,

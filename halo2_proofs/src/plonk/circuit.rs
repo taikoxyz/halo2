@@ -1,7 +1,10 @@
 use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::fmt::Debug;
+use std::hash::Hasher;
+use std::marker::PhantomData;
 use std::ops::Range;
 use std::{
     convert::TryFrom,
@@ -390,7 +393,7 @@ impl Selector {
 }
 
 /// Query of fixed column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FixedQuery {
     /// Query index
     pub(crate) index: usize,
@@ -417,7 +420,7 @@ impl FixedQuery {
 }
 
 /// Query of advice column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct AdviceQuery {
     /// Query index
     pub(crate) index: usize,
@@ -451,7 +454,7 @@ impl AdviceQuery {
 }
 
 /// Query of instance column at a certain relative location
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InstanceQuery {
     /// Query index
     pub(crate) index: usize,
@@ -1103,7 +1106,7 @@ impl<F: Field> Expression<F> {
     }
 }
 
-impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
+impl<F: ff::Field> std::fmt::Debug for Expression<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Constant(scalar) => f.debug_tuple("Constant").field(scalar).finish(),
@@ -1370,6 +1373,13 @@ impl<F: Field> Gate<F> {
     }
 }
 
+/// TODO doc
+#[derive(Debug, Clone)]
+pub struct LookupTracker<F: Field> {
+    pub(crate) table: Vec<Expression<F>>,
+    pub(crate) inputs: Vec<Vec<Expression<F>>>,
+}
+
 /// This is a description of the circuit environment, such as the gate, column and
 /// permutation arrangements.
 #[derive(Debug, Clone)]
@@ -1402,8 +1412,12 @@ pub struct ConstraintSystem<F: Field> {
     // Permutation argument for performing equality constraints
     pub permutation: permutation::Argument,
 
+    /// Map from table expression to vec of vec of input expressions
+    pub lookups_map: HashMap<String, LookupTracker<F>>,
+
     // Vector of lookup arguments, where each corresponds to a sequence of
     // input expressions and a sequence of table expressions involved in the lookup.
+    pub(crate) hybrid_lookups: Vec<mv_lookup::HybridArgument<F>>,
     pub(crate) lookups: Vec<mv_lookup::Argument<F>>,
 
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to their annotation.
@@ -1492,7 +1506,9 @@ impl<F: Field> Default for ConstraintSystem<F> {
             num_advice_queries: Vec::new(),
             instance_queries: Vec::new(),
             permutation: permutation::Argument::new(),
+            lookups_map: HashMap::default(),
             lookups: Vec::new(),
+            hybrid_lookups: Vec::new(),
             general_column_annotations: HashMap::new(),
             constants: vec![],
             minimum_degree: None,
@@ -1551,9 +1567,9 @@ impl<F: Field> ConstraintSystem<F> {
         &mut self,
         name: &'static str,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
-    ) -> usize {
+    ) {
         let mut cells = VirtualCells::new(self);
-        let table_map = table_map(&mut cells)
+        let table_map: Vec<_> = table_map(&mut cells)
             .into_iter()
             .map(|(input, table)| {
                 if input.contains_simple_selector() {
@@ -1566,11 +1582,32 @@ impl<F: Field> ConstraintSystem<F> {
             })
             .collect();
 
-        let index = self.lookups.len();
+        self.lookups
+            .push(mv_lookup::Argument::new(name, table_map.clone()));
+        let (input_expressions, table_expressions): (Vec<_>, Vec<_>) =
+            table_map.into_iter().unzip();
+        let table_expressions_identifier = table_expressions
+            .iter()
+            .fold(String::new(), |string, expr| string + &expr.identifier());
 
-        self.lookups.push(mv_lookup::Argument::new(name, table_map));
+        self.lookups_map
+            .entry(table_expressions_identifier)
+            .and_modify(|table_tracker| table_tracker.inputs.push(input_expressions.clone()))
+            .or_insert(LookupTracker {
+                table: table_expressions,
+                inputs: vec![input_expressions],
+            });
+    }
 
-        index
+    fn unfold_lookups(&self) -> Vec<mv_lookup::HybridArgument<F>> {
+        self.lookups_map
+            .iter()
+            .map(|(_, v)| {
+                let LookupTracker { table, inputs } = v;
+                // FIXME do not allow large degree inputs
+                mv_lookup::HybridArgument::new(table, inputs)
+            })
+            .collect()
     }
 
     /// Add a lookup argument for some input expressions and table expressions.

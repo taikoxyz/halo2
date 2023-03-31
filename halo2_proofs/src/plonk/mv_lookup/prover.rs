@@ -100,7 +100,12 @@ impl<F: FieldExt> Argument<F> {
         let blinding_factors = pk.vk.cs.blinding_factors();
 
         // compute m(X)
-        let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression.iter().take(params.n() as usize - blinding_factors - 1).enumerate().map(|(i, &x)| (x, i)).collect();
+        let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression
+            .iter()
+            .take(params.n() as usize - blinding_factors - 1)
+            .enumerate()
+            .map(|(i, &x)| (x, i))
+            .collect();
 
         let mut m_values = domain.empty_lagrange();
 

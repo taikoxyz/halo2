@@ -299,6 +299,7 @@ fn plonk_api() {
             let sl = meta.lookup_table_column();
 
             let dummy = meta.complex_selector();
+            let dummy_table = meta.lookup_table_column();
 
             /*
              *   A         B      ...  sl
@@ -329,7 +330,7 @@ fn plonk_api() {
             meta.lookup("lookup_same", |meta| {
                 let b_ = meta.query_any(b, Rotation::cur());
                 let dummy = meta.query_selector(dummy);
-                vec![(dummy * b_, sl)]
+                vec![(dummy * b_, dummy_table)]
             });
 
             meta.create_gate("Combined add-mult", |meta| {

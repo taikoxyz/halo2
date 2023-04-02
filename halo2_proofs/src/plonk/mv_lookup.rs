@@ -3,6 +3,7 @@ use ff::Field;
 use std::fmt::{self, Debug};
 
 pub(crate) mod hybrid_prover;
+pub(crate) mod hybrid_verifier;
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
@@ -16,7 +17,7 @@ pub(crate) mod verifier;
        table_vec_expressions, vec<vec<input_expressions>>
 
        // compute degree, if it's bigger than some bound
-           -> crete new lookup_argument: table_vec_expressions, empty
+           -> create new lookup_argument: table_vec_expressions, empty
    }
 */
 

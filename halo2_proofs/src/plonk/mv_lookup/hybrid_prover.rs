@@ -178,7 +178,7 @@ impl<F: FieldExt> Argument<F> {
         let m_commitment = params.commit_lagrange(&m_values, blind).to_affine();
 
         // write commitment of m(X) to transcript
-        // transcript.write_point(m_commitment)?;
+        transcript.write_point(m_commitment)?;
 
         Ok(Prepared {
             compressed_inputs_expressions,
@@ -344,7 +344,7 @@ impl<C: CurveAffine> Prepared<C> {
         let phi_commitment = params.commit_lagrange(&phi, grand_sum_blind).to_affine();
 
         // Hash grand sum commitment
-        // transcript.write_point(phi_commitment)?;
+        transcript.write_point(phi_commitment)?;
 
         Ok(Committed {
             m_poly: pk.vk.domain.lagrange_to_coeff(self.m_values),
@@ -373,7 +373,7 @@ impl<C: CurveAffine> Committed<C> {
             .chain(Some(phi_next_eval))
             .chain(Some(m_eval))
         {
-            // transcript.write_scalar(eval)?;
+            transcript.write_scalar(eval)?;
         }
 
         Ok(Evaluated { constructed: self })

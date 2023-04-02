@@ -531,37 +531,32 @@ pub fn create_proof<
         .collect::<Result<Vec<_>, _>>()?;
 
     // JUST SANITY ON HYBRID ARGUMENT
-    let hybrid_lookups = {
-        let lookups: Vec<Vec<mv_lookup::hybrid_prover::Prepared<Scheme::Curve>>> = instance
-            .iter()
-            .zip(advice.iter())
-            .map(|(instance, advice)| -> Result<Vec<_>, Error> {
-                // Construct and commit to permuted values for each lookup
-                pk.vk
-                    .cs
-                    .hybrid_lookups
-                    .iter()
-                    .map(|lookup| {
-                        lookup.prepare(
-                            pk,
-                            params,
-                            domain,
-                            theta,
-                            &advice.advice_polys,
-                            &pk.fixed_values,
-                            &instance.instance_values,
-                            &challenges,
-                            &mut rng,
-                            transcript,
-                        )
-                    })
-                    .collect()
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-
-        lookups
-    };
+    let hybrid_lookups: Vec<Vec<mv_lookup::hybrid_prover::Prepared<Scheme::Curve>>> = instance
+        .iter()
+        .zip(advice.iter())
+        .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            // Construct and commit to permuted values for each lookup
+            pk.vk
+                .cs
+                .hybrid_lookups
+                .iter()
+                .map(|lookup| {
+                    lookup.prepare(
+                        pk,
+                        params,
+                        domain,
+                        theta,
+                        &advice.advice_polys,
+                        &pk.fixed_values,
+                        &instance.instance_values,
+                        &challenges,
+                        &mut rng,
+                        transcript,
+                    )
+                })
+                .collect()
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Sample beta challenge
     let beta: ChallengeBeta<_> = transcript.squeeze_challenge_scalar();
@@ -600,8 +595,8 @@ pub fn create_proof<
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    {
-        let _lookups: Vec<Vec<mv_lookup::hybrid_prover::Committed<Scheme::Curve>>> = hybrid_lookups
+    let hybrid_lookups: Vec<Vec<mv_lookup::hybrid_prover::Committed<Scheme::Curve>>> =
+        hybrid_lookups
             .into_iter()
             .map(|lookups| -> Result<Vec<_>, _> {
                 // Construct and commit to products for each lookup
@@ -611,7 +606,6 @@ pub fn create_proof<
                     .collect::<Result<Vec<_>, _>>()
             })
             .collect::<Result<Vec<_>, _>>()?;
-    };
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::commit(params, domain, &mut rng, transcript)?;
@@ -655,6 +649,7 @@ pub fn create_proof<
         *gamma,
         *theta,
         &lookups,
+        &hybrid_lookups,
         &permutations,
     );
 
@@ -742,6 +737,17 @@ pub fn create_proof<
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let hybrid_lookups: Vec<Vec<mv_lookup::hybrid_prover::Evaluated<Scheme::Curve>>> =
+        hybrid_lookups
+            .into_iter()
+            .map(|lookups| -> Result<Vec<_>, _> {
+                lookups
+                    .into_iter()
+                    .map(|p| p.evaluate(pk, x, transcript))
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
     let instances = instance
         .iter()
         .zip(advice.iter())
@@ -774,6 +780,13 @@ pub fn create_proof<
                 )
                 .chain(permutation.open(pk, x))
                 .chain(lookups.iter().flat_map(move |p| p.open(pk, x)).into_iter())
+                .chain(
+                    hybrid_lookups
+                        .iter()
+                        .flatten()
+                        .flat_map(move |p| p.open(pk, x))
+                        .into_iter(),
+                )
         })
         .chain(
             pk.vk

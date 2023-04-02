@@ -299,6 +299,11 @@ fn plonk_api() {
             let sl = meta.lookup_table_column();
 
             let dummy = meta.complex_selector();
+            let dummy_2 = meta.complex_selector();
+            let dummy_3 = meta.complex_selector();
+
+
+
             let dummy_table = meta.lookup_table_column();
 
             /*
@@ -330,7 +335,10 @@ fn plonk_api() {
             meta.lookup("lookup_same", |meta| {
                 let b_ = meta.query_any(b, Rotation::cur());
                 let dummy = meta.query_selector(dummy);
-                vec![(dummy * b_, dummy_table)]
+                let dummy_2 = meta.query_selector(dummy_2);
+                let dummy_3 = meta.query_selector(dummy_3);
+
+                vec![(dummy * dummy_2 * dummy_3 * b_, dummy_table)]
             });
 
             meta.create_gate("Combined add-mult", |meta| {
@@ -639,10 +647,6 @@ fn plonk_api() {
         let rng = OsRng;
 
         let pk = keygen::<KZGCommitmentScheme<_>>(&params);
-        println!(
-            "cs lookups_map len: {:?}",
-            pk.get_vk().cs().lookups_map.len()
-        );
 
         let proof = create_proof::<_, ProverGWC<_>, _, _, Blake2bWrite<_, _, Challenge255<_>>>(
             rng, &params, &pk,

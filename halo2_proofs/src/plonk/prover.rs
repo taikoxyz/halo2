@@ -753,7 +753,8 @@ pub fn create_proof<
         .zip(advice.iter())
         .zip(permutations.iter())
         .zip(lookups.iter())
-        .flat_map(|(((instance, advice), permutation), lookups)| {
+        .zip(hybrid_lookups.iter())
+        .flat_map(|((((instance, advice), permutation), lookups), hybrid_lookups)| {
             iter::empty()
                 .chain(
                     P::QUERY_INSTANCE
@@ -783,7 +784,6 @@ pub fn create_proof<
                 .chain(
                     hybrid_lookups
                         .iter()
-                        .flatten()
                         .flat_map(move |p| p.open(pk, x))
                         .into_iter(),
                 )

@@ -40,6 +40,7 @@ where
 {
     let mut cs = ConstraintSystem::default();
     let config = ConcreteCircuit::configure(&mut cs);
+    let cs = cs.chunk_lookups();
 
     let degree = cs.degree();
 
@@ -371,7 +372,6 @@ where
     debug_assert_eq!(Arc::strong_count(&assembly.selectors_vec), 1);
     let mut fixed =
         batch_invert_assigned(Arc::try_unwrap(assembly.fixed_vec).expect("only one Arc for fixed"));
-    let cs = cs.chunk_lookups();
     let (cs, selector_polys) = cs.compress_selectors(
         Arc::try_unwrap(assembly.selectors_vec).expect("only one Arc for selectors"),
     );
@@ -479,7 +479,6 @@ where
     debug_assert_eq!(Arc::strong_count(&assembly.selectors_vec), 1);
     let mut fixed =
         batch_invert_assigned(Arc::try_unwrap(assembly.fixed_vec).expect("only one Arc for fixed"));
-    let cs = cs.chunk_lookups();
     let (cs, selector_polys) = cs.compress_selectors(
         Arc::try_unwrap(assembly.selectors_vec).expect("only one Arc for selectors"),
     );

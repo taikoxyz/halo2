@@ -1596,18 +1596,64 @@ impl<F: Field> ConstraintSystem<F> {
             });
     }
 
-    /// TODO: Chunk into smaller pieces based on max degree bound
+    /// Chunk lookup arguments into pieces below a given degree bound
     pub fn chunk_lookups(mut self) -> Self {
-        self.lookups = self
+        if self.lookups_map.is_empty() {
+            return self;
+        }
+
+        let max_gate_degree = self.max_gate_degree();
+        let max_single_lookup_degree: usize = self
             .lookups_map
             .values()
             .map(|v| {
-                let LookupTracker { table, inputs } = v;
-                // FIXME do not allow large degree inputs
-                mv_lookup::Argument::new(table, inputs)
-            })
-            .collect();
+                let table_degree = v.table.iter().map(|expr| expr.degree()).max().unwrap();
+                let base_lookup_degree = super::mv_lookup::base_degree(table_degree);
 
+                let max_inputs_degree: usize = v
+                    .inputs
+                    .iter()
+                    .map(|input| input.iter().map(|expr| expr.degree()).max().unwrap())
+                    .max()
+                    .unwrap();
+
+                mv_lookup::degree_with_input(base_lookup_degree, max_inputs_degree)
+            })
+            .max()
+            .unwrap();
+
+        let required_degree = std::cmp::max(max_gate_degree, max_single_lookup_degree);
+        self.set_minimum_degree(required_degree);
+
+        // safe to unwrap here
+        let minimum_degree = self.minimum_degree.unwrap();
+
+        let mut lookups: Vec<_> = vec![];
+        for v in self.lookups_map.values() {
+            let LookupTracker { table, inputs } = v;
+            let mut args = vec![super::mv_lookup::Argument::new(table, &[inputs[0].clone()])];
+
+            for input in inputs.iter().skip(1) {
+                let cur_input_degree = input.iter().map(|expr| expr.degree()).max().unwrap();
+                let mut indicator = false;
+                for i in 0..args.len() {
+                    // try to fit input in one of the args
+                    let cur_argument_degree = args[i].required_degree();
+                    let new_potential_degree = cur_argument_degree + cur_input_degree;
+                    if new_potential_degree < minimum_degree {
+                        args[i].inputs_expressions.push(input.clone());
+                        indicator = true;
+                        break;
+                    }
+                }
+
+                if !indicator {
+                    args.push(super::mv_lookup::Argument::new(table, &[input.clone()]))
+                }
+            }
+            lookups.append(&mut args);
+        }
+        self.lookups = lookups;
         self
     }
 
@@ -1745,7 +1791,9 @@ impl<F: Field> ConstraintSystem<F> {
     /// larger amount than actually needed. This can be used, for example, to
     /// force the permutation argument to involve more columns in the same set.
     pub fn set_minimum_degree(&mut self, degree: usize) {
-        self.minimum_degree = Some(degree);
+        self.minimum_degree = self
+            .minimum_degree
+            .map_or(Some(degree), |min_degree| Some(max(min_degree, degree)));
     }
 
     /// Creates a new gate.
@@ -2051,6 +2099,15 @@ impl<F: Field> ConstraintSystem<F> {
         (0..=max_phase).map(sealed::Phase)
     }
 
+    /// Compute the maximum degree of gates in the constraint system
+    pub fn max_gate_degree(&self) -> usize {
+        self.gates
+            .iter()
+            .flat_map(|gate| gate.polynomials().iter().map(|poly| poly.degree()))
+            .max()
+            .unwrap_or(0)
+    }
+
     /// Compute the degree of the constraint system (the maximum degree of all
     /// constraints).
     pub fn degree(&self) -> usize {
@@ -2071,16 +2128,9 @@ impl<F: Field> ConstraintSystem<F> {
 
         // Account for each gate to ensure our quotient polynomial is the
         // correct degree and that our extended domain is the right size.
-        degree = std::cmp::max(
-            degree,
-            self.gates
-                .iter()
-                .flat_map(|gate| gate.polynomials().iter().map(|poly| poly.degree()))
-                .max()
-                .unwrap_or(0),
-        );
+        degree = std::cmp::max(degree, self.max_gate_degree());
 
-        //
+        // Lookup degree
         degree = std::cmp::max(
             degree,
             self.lookups

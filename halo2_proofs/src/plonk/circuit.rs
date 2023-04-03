@@ -1622,12 +1622,10 @@ impl<F: Field> ConstraintSystem<F> {
             .max()
             .unwrap();
 
-
-
         let required_degree = std::cmp::max(max_gate_degree, max_single_lookup_degree);
-        let required_degree = (required_degree as u64).next_power_of_two() as usize;
+        let required_degree = (required_degree as u64 - 1).next_power_of_two() as usize;
 
-        self.set_minimum_degree(required_degree);
+        self.set_minimum_degree(required_degree + 1);
 
         // safe to unwrap here
         let minimum_degree = self.minimum_degree.unwrap();
@@ -1644,7 +1642,7 @@ impl<F: Field> ConstraintSystem<F> {
                     // try to fit input in one of the args
                     let cur_argument_degree = args[i].required_degree();
                     let new_potential_degree = cur_argument_degree + cur_input_degree;
-                    if new_potential_degree < minimum_degree {
+                    if new_potential_degree <= minimum_degree {
                         args[i].inputs_expressions.push(input.clone());
                         indicator = true;
                         break;

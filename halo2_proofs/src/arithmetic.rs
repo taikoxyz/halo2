@@ -132,6 +132,17 @@ pub fn small_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::C
 ///
 /// This will use multithreading if beneficial.
 pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
+    #[cfg(feature = "counter")]
+    {
+        use crate::MSM_COUNTER;
+        *MSM_COUNTER
+            .lock()
+            .unwrap()
+            .entry(coeffs.len())
+            .and_modify(|cnt| *cnt += 1)
+            .or_insert(1);
+    }
+
     assert_eq!(coeffs.len(), bases.len());
 
     let num_threads = multicore::current_num_threads();
@@ -171,6 +182,17 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 ///
 /// This will use multithreading if beneficial.
 pub fn best_fft<G: Group>(a: &mut [G], omega: G::Scalar, log_n: u32) {
+    #[cfg(feature = "counter")]
+    {
+        use crate::FFT_COUNTER;
+        *FFT_COUNTER
+            .lock()
+            .unwrap()
+            .entry(a.len())
+            .and_modify(|cnt| *cnt += 1)
+            .or_insert(1);
+    }
+
     let threads = multicore::current_num_threads();
     let log_split = log2_floor(threads) as usize;
     let n = a.len() as usize;

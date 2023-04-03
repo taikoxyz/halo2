@@ -887,6 +887,7 @@ dependencies = [
  "group",
  "gumdrop",
  "halo2curves 0.3.1 (git+https://github.com/scroll-tech/halo2curves.git?branch=0.3.1-derive-serde)",
+ "lazy_static",
  "log",
  "num-bigint",
  "num-integer",

@@ -40,6 +40,7 @@ where
 {
     let mut cs = ConstraintSystem::default();
     let config = ConcreteCircuit::configure(&mut cs);
+
     let cs = cs.chunk_lookups();
 
     let degree = cs.degree();

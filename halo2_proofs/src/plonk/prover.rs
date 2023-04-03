@@ -56,6 +56,17 @@ pub fn create_proof<
     mut rng: R,
     transcript: &mut T,
 ) -> Result<(), Error> {
+    #[cfg(feature = "counter")]
+    {
+        use std::collections::BTreeMap;
+        use crate::{FFT_COUNTER, MSM_COUNTER};
+
+        // reset counters at the beginning of the prove
+        *MSM_COUNTER.lock().unwrap() = BTreeMap::new();
+        *FFT_COUNTER.lock().unwrap() = BTreeMap::new();
+    }
+
+
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -742,6 +753,18 @@ pub fn create_proof<
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
+
+    #[cfg(feature = "counter")]
+    {
+        use std::collections::BTreeMap;
+        use crate::{FFT_COUNTER, MSM_COUNTER};
+        println!("MSM_COUNTER: {:?}", MSM_COUNTER.lock().unwrap());
+        println!("FFT_COUNTER: {:?}", *FFT_COUNTER.lock().unwrap());
+
+        // reset counters at the end of the proving
+        *MSM_COUNTER.lock().unwrap() = BTreeMap::new();
+        *FFT_COUNTER.lock().unwrap() = BTreeMap::new();
+    }
 
     let prover = P::new(params);
     prover

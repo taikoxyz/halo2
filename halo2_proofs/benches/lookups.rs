@@ -56,7 +56,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 other_advice: meta.advice_column(),
             };
 
-            meta.set_minimum_degree(16);
+            // meta.set_minimum_degree(16);
 
             meta.lookup("lookup", |meta| {
                 let selector = meta.query_selector(config.selector);
@@ -200,7 +200,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         assert!(verify_proof(params, vk, strategy, &[&[]], &mut transcript).is_ok());
     }
 
-    let k_range = 11..=16;
+    let k_range = 11..=11;
 
     let mut keygen_group = c.benchmark_group("plonk-keygen");
     keygen_group.sample_size(10);

@@ -1622,7 +1622,11 @@ impl<F: Field> ConstraintSystem<F> {
             .max()
             .unwrap();
 
+
+
         let required_degree = std::cmp::max(max_gate_degree, max_single_lookup_degree);
+        let required_degree = (required_degree as u64).next_power_of_two() as usize;
+
         self.set_minimum_degree(required_degree);
 
         // safe to unwrap here

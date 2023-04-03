@@ -40,6 +40,10 @@ name = "dev_lookup"
 harness = false
 
 [[bench]]
+name = "lookups"
+harness = false
+
+[[bench]]
 name = "fft"
 harness = false
 

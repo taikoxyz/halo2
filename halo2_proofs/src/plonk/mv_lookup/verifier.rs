@@ -10,7 +10,7 @@ use crate::{
     poly::{commitment::MSM, Rotation, VerifierQuery},
     transcript::{EncodedChallenge, TranscriptRead},
 };
-use ff::Field;
+use ff::{BatchInvert, Field};
 
 pub struct PreparedCommitments<C: CurveAffine> {
     m_commitment: C,
@@ -94,6 +94,13 @@ impl<C: CurveAffine> Evaluated<C> {
     ) -> impl Iterator<Item = C::Scalar> + 'a {
         let active_rows = C::Scalar::one() - (l_last + l_blind);
 
+        /*
+            φ_i(X) = f_i(X) + α
+            τ(X) = t(X) + α
+            LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+            RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+        */
+
         let grand_sum_expression = || {
             let compress_expressions = |expressions: &[Expression<C::Scalar>]| {
                 expressions
@@ -115,15 +122,33 @@ impl<C: CurveAffine> Evaluated<C> {
                     .fold(C::Scalar::zero(), |acc, eval| acc * &*theta + &eval)
             };
 
-            let f_eval = compress_expressions(&argument.input_expressions);
+            // φ_i(X) = f_i(X) + α
+            let mut f_evals: Vec<_> = argument
+                .inputs_expressions
+                .iter()
+                .map(|input_expressions| compress_expressions(input_expressions) + *beta)
+                .collect();
+
             let t_eval = compress_expressions(&argument.table_expressions);
 
             let tau = t_eval + *beta;
-            let fi = f_eval + *beta;
+            // Π(φ_i(X))
+            let prod_fi = f_evals
+                .iter()
+                .fold(C::Scalar::one(), |acc, eval| acc * eval);
+            // ∑ 1/(φ_i(X))
+            let sum_inv_fi = {
+                f_evals.batch_invert();
+                f_evals
+                    .iter()
+                    .fold(C::Scalar::zero(), |acc, eval| acc + eval)
+            };
 
-            let lhs = tau * fi * (self.phi_next_eval - self.phi_eval);
+            // LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+            let lhs = tau * prod_fi * (self.phi_next_eval - self.phi_eval);
 
-            let rhs = { tau * fi * (fi.invert().unwrap() - self.m_eval * tau.invert().unwrap()) };
+            // RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+            let rhs = { tau * prod_fi * (sum_inv_fi - self.m_eval * tau.invert().unwrap()) };
 
             (lhs - rhs) * active_rows
         };

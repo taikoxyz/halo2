@@ -582,7 +582,6 @@ mod tests {
             assert_eq!(
                 prover.verify(),
                 Err(vec![VerifyFailure::Lookup {
-                    name: "lookup",
                     lookup_index: 0,
                     location: FailureLocation::InRegion {
                         region: (1, "Range check 6 bits").into(),
@@ -603,7 +602,6 @@ mod tests {
                 prover.verify(),
                 Err(vec![
                     VerifyFailure::Lookup {
-                        name: "lookup",
                         lookup_index: 0,
                         location: FailureLocation::InRegion {
                             region: (1, "Range check 6 bits").into(),
@@ -611,7 +609,6 @@ mod tests {
                         },
                     },
                     VerifyFailure::Lookup {
-                        name: "lookup",
                         lookup_index: 0,
                         location: FailureLocation::InRegion {
                             region: (1, "Range check 6 bits").into(),
@@ -641,7 +638,6 @@ mod tests {
             assert_eq!(
                 prover.verify(),
                 Err(vec![VerifyFailure::Lookup {
-                    name: "lookup",
                     lookup_index: 0,
                     location: FailureLocation::InRegion {
                         region: (1, "Range check 6 bits").into(),

@@ -187,9 +187,7 @@ pub struct Evaluator<C: CurveAffine> {
     ///  Custom gates evalution
     pub custom_gates: GraphEvaluator<C>,
     ///  Lookups evalution
-    pub lookups: Vec<(GraphEvaluator<C>, GraphEvaluator<C>)>,
-    ///  Hybrid lookups evalution
-    pub hybrid_lookups: Vec<(Vec<GraphEvaluator<C>>, GraphEvaluator<C>)>,
+    pub lookups: Vec<(Vec<GraphEvaluator<C>>, GraphEvaluator<C>)>,
 }
 
 /// GraphEvaluator
@@ -246,45 +244,6 @@ impl<C: CurveAffine> Evaluator<C> {
         // Lookups
         for lookup in cs.lookups.iter() {
             let mut graph_table = GraphEvaluator::default();
-            let mut graph_input = GraphEvaluator::default();
-
-            let evaluate_lc = |graph: &mut GraphEvaluator<C>, expressions: &Vec<Expression<_>>| {
-                let parts = expressions
-                    .iter()
-                    .map(|expr| graph.add_expression(expr))
-                    .collect();
-                graph.add_calculation(Calculation::Horner(
-                    ValueSource::Constant(0),
-                    parts,
-                    ValueSource::Theta(),
-                ))
-            };
-
-            // Input coset
-            let compressed_input_coset = evaluate_lc(&mut graph_input, &lookup.input_expressions);
-            // table coset
-            let compressed_table_coset = evaluate_lc(&mut graph_table, &lookup.table_expressions);
-
-            graph_input.add_calculation(Calculation::Add(
-                compressed_input_coset,
-                ValueSource::Beta(),
-            ));
-
-            graph_table.add_calculation(Calculation::Add(
-                compressed_table_coset,
-                ValueSource::Beta(),
-            ));
-
-            /*
-                a) 1/(f + beta)
-                b) 1/(t + beta)
-            */
-            ev.lookups.push((graph_input, graph_table));
-        }
-
-        // Hybrid lookups
-        for lookup in cs.hybrid_lookups.iter() {
-            let mut graph_table = GraphEvaluator::default();
             let mut graph_inputs: Vec<_> = (0..lookup.inputs_expressions.len())
                 .map(|_| GraphEvaluator::default())
                 .collect();
@@ -307,7 +266,7 @@ impl<C: CurveAffine> Evaluator<C> {
                 .iter()
                 .zip(graph_inputs.iter_mut())
             {
-                let compressed_input_coset = evaluate_lc(graph_input, &input_expressions);
+                let compressed_input_coset = evaluate_lc(graph_input, input_expressions);
 
                 graph_input.add_calculation(Calculation::Add(
                     compressed_input_coset,
@@ -327,7 +286,7 @@ impl<C: CurveAffine> Evaluator<C> {
                 a) f_i + beta
                 b) t + beta
             */
-            ev.hybrid_lookups.push((graph_inputs.to_vec(), graph_table));
+            ev.lookups.push((graph_inputs.to_vec(), graph_table));
         }
 
         ev
@@ -345,7 +304,6 @@ impl<C: CurveAffine> Evaluator<C> {
         gamma: C::ScalarExt,
         theta: C::ScalarExt,
         lookups: &[Vec<mv_lookup::prover::Committed<C>>],
-        hybrid_lookups: &[Vec<mv_lookup::hybrid_prover::Committed<C>>],
         permutations: &[permutation::prover::Committed<C>],
     ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff> {
         let domain = &pk.vk.domain;
@@ -402,12 +360,11 @@ impl<C: CurveAffine> Evaluator<C> {
 
                 // Core expression evaluations
                 let num_threads = multicore::current_num_threads();
-                for ((((advice, instance), lookups), hybrid_lookups), permutation) in advice
+                for (((advice, instance), lookups), permutation) in advice
                     .iter()
                     .zip(instance.iter())
                     .zip(lookups.iter())
-                    .zip(hybrid_lookups.iter())
-                    .zip(permutations.iter())
+                            .zip(permutations.iter())
                 {
                     // Custom gates
                     multicore::scope(|scope| {
@@ -560,82 +517,6 @@ impl<C: CurveAffine> Evaluator<C> {
                         let m_coset = pk.vk.domain.coeff_to_extended_part(lookup.m_poly.clone(), current_extended_omega);
 
                         // Lookup constraints
-                        parallelize(&mut values, |values, start| {
-                            let (input_lookup_evaluator, table_lookup_evaluator) = &self.lookups[n];
-                            let mut input_eval_data = input_lookup_evaluator.instance();
-                            let mut table_eval_data = table_lookup_evaluator.instance();
-
-                            for (i, value) in values.iter_mut().enumerate() {
-                                let idx = start + i;
-
-                                // f_i(X) + α
-                                let input_value = input_lookup_evaluator.evaluate(
-                                    &mut input_eval_data,
-                                    fixed,
-                                    advice,
-                                    instance,
-                                    challenges,
-                                    &beta,
-                                    &gamma,
-                                    &theta,
-                                    &y,
-                                    &C::ScalarExt::zero(),
-                                    idx,
-                                    rot_scale,
-                                    isize,
-                                );
-
-                                // t(X) + α
-                                let table_value = table_lookup_evaluator.evaluate(
-                                    &mut table_eval_data,
-                                    fixed,
-                                    advice,
-                                    instance,
-                                    challenges,
-                                    &beta,
-                                    &gamma,
-                                    &theta,
-                                    &y,
-                                    &C::ScalarExt::zero(),
-                                    idx,
-                                    rot_scale,
-                                    isize,
-                                );
-
-                                let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-
-                                let lhs = {
-                                    // (t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X))
-                                    table_value * input_value * (phi_coset[r_next] - phi_coset[idx])
-                                };
-
-                                let rhs = {
-                                    //   (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
-                                    // = (t(X) + α) - m(X) * (f_i + α)
-                                    table_value - m_coset[idx] * input_value
-                                };
-
-                                // phi[0] = 0
-                                *value = *value * y + l0[idx] * phi_coset[idx];
-
-                                // phi[u] = 0
-                                *value = *value * y + l_last[idx] * phi_coset[idx];
-
-                                // q(X) = ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))) mod zH(X)
-                                *value = *value * y + (lhs - rhs) * l_active_row[idx];
-                            }
-                        });
-                    }
-        
-                    // Hybrid lookups
-                    for (n, lookup) in hybrid_lookups.iter().enumerate() {
-                        // Polynomials required for this lookup.
-                        // Calculated here so these only have to be kept in memory for the short time
-                        // they are actually needed.
-                        let phi_coset = pk.vk.domain.coeff_to_extended_part(lookup.phi_poly.clone(), current_extended_omega);
-                        let m_coset = pk.vk.domain.coeff_to_extended_part(lookup.m_poly.clone(), current_extended_omega);
-
-                        // Lookup constraints
                         /*
                             φ_i(X) = f_i(X) + α
                             τ(X) = t(X) + α
@@ -645,7 +526,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                 = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
                         */
                         parallelize(&mut values, |values, start| {
-                            let (inputs_lookup_evaluator, table_lookup_evaluator) = &self.hybrid_lookups[n];
+                            let (inputs_lookup_evaluator, table_lookup_evaluator) = &self.lookups[n];
                             let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
                                 .iter()
                                 .map(|input_lookup_evaluator| input_lookup_evaluator.instance())

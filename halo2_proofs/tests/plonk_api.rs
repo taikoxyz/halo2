@@ -302,8 +302,6 @@ fn plonk_api() {
             let dummy_2 = meta.complex_selector();
             let dummy_3 = meta.complex_selector();
 
-
-
             let dummy_table = meta.lookup_table_column();
 
             /*

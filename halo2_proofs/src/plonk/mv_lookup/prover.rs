@@ -29,7 +29,7 @@ use std::{
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {
-    compressed_input_expression: Polynomial<C::Scalar, LagrangeCoeff>,
+    compressed_inputs_expressions: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
     compressed_table_expression: Polynomial<C::Scalar, LagrangeCoeff>,
     m_values: Polynomial<C::Scalar, LagrangeCoeff>,
 }
@@ -92,7 +92,11 @@ impl<F: FieldExt> Argument<F> {
         };
 
         // Get values of input expressions involved in the lookup and compress them
-        let compressed_input_expression = compress_expressions(&self.input_expressions);
+        let compressed_inputs_expressions: Vec<_> = self
+            .inputs_expressions
+            .iter()
+            .map(|input_expressions| compress_expressions(input_expressions))
+            .collect();
 
         // Get values of table expressions involved in the lookup and compress them
         let compressed_table_expression = compress_expressions(&self.table_expressions);
@@ -109,16 +113,22 @@ impl<F: FieldExt> Argument<F> {
 
         let mut m_values = domain.empty_lagrange();
 
-        compressed_input_expression
+        let mut update_multiplicities =
+            |compressed_expressions: &Polynomial<C::Scalar, LagrangeCoeff>| {
+                compressed_expressions
+                    .iter()
+                    .take(params.n() as usize - blinding_factors - 1)
+                    .for_each(|fi| {
+                        let index = table_index_value_mapping
+                            .get(fi)
+                            .expect(&format!("value: {:?} not in table", fi));
+                        m_values[*index] += C::Scalar::one();
+                    });
+            };
+
+        compressed_inputs_expressions
             .iter()
-            .take(params.n() as usize - blinding_factors - 1)
-            .for_each(|fi| {
-                let index = table_index_value_mapping.get(fi).expect(&format!(
-                    "in lookup: {}, value: {:?} not in table",
-                    self.name, fi
-                ));
-                m_values[*index] += C::Scalar::one();
-            });
+            .for_each(|cs_input_expr| update_multiplicities(cs_input_expr));
 
         #[cfg(feature = "sanity-checks")]
         {
@@ -134,13 +144,26 @@ impl<F: FieldExt> Argument<F> {
 
             // check sums
             let alpha = C::Scalar::random(&mut rng);
+            let cs_input_sum =
+                |compressed_input_expression: &Polynomial<C::Scalar, LagrangeCoeff>| {
+                    let mut lhs_sum = C::Scalar::zero();
+                    for &fi in compressed_input_expression
+                        .iter()
+                        .take(params.n() as usize - blinding_factors - 1)
+                    {
+                        lhs_sum += (fi + alpha).invert().unwrap();
+                    }
+
+                    lhs_sum
+                };
+
             let mut lhs_sum = C::Scalar::zero();
-            for &fi in compressed_input_expression
-                .iter()
-                .take(params.n() as usize - blinding_factors - 1)
-            {
-                lhs_sum += (fi + alpha).invert().unwrap();
+
+            for compressed_input_expression in compressed_inputs_expressions.iter() {
+                lhs_sum += cs_input_sum(compressed_input_expression);
             }
+
+            // let lhs_sum: &C::Scalar = compressed_inputs_expressions.map(|compressed_input_expression| cs_input_sum(&compressed_input_expression)).fold(C::Scalar::zero(), |acc, val| return acc + &val);
 
             let mut rhs_sum = C::Scalar::zero();
             for (&ti, &mi) in compressed_table_expression.iter().zip(m_values.iter()) {
@@ -158,7 +181,7 @@ impl<F: FieldExt> Argument<F> {
         transcript.write_point(m_commitment)?;
 
         Ok(Prepared {
-            compressed_input_expression,
+            compressed_inputs_expressions,
             compressed_table_expression,
             m_values,
         })
@@ -180,21 +203,37 @@ impl<C: CurveAffine> Prepared<C> {
         mut rng: R,
         transcript: &mut T,
     ) -> Result<Committed<C>, Error> {
-        let mut input_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
+        /*
+            φ_i(X) = f_i(X) + α
+            τ(X) = t(X) + α
+            LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+            RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+        */
 
-        parallelize(
-            &mut input_log_derivatives,
-            |input_log_derivatives, start| {
-                for (input_log_derivative, fi) in input_log_derivatives
-                    .iter_mut()
-                    .zip(self.compressed_input_expression[start..].iter())
-                {
-                    *input_log_derivative = *beta + fi;
-                }
-            },
-        );
-        input_log_derivatives.iter_mut().batch_invert();
+        // ∑ 1/(φ_i(X))
+        let mut inputs_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
+        for compressed_input_expression in self.compressed_inputs_expressions.iter() {
+            let mut input_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
 
+            parallelize(
+                &mut input_log_derivatives,
+                |input_log_derivatives, start| {
+                    for (input_log_derivative, fi) in input_log_derivatives
+                        .iter_mut()
+                        .zip(compressed_input_expression[start..].iter())
+                    {
+                        *input_log_derivative = *beta + fi;
+                    }
+                },
+            );
+            input_log_derivatives.iter_mut().batch_invert();
+            // TODO: remove last blnders from this
+            for i in 0..params.n() as usize {
+                inputs_log_derivatives[i] += input_log_derivatives[i];
+            }
+        }
+
+        // 1 / τ(X)
         let mut table_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
         parallelize(
             &mut table_log_derivatives,
@@ -209,15 +248,16 @@ impl<C: CurveAffine> Prepared<C> {
         );
         table_log_derivatives.iter_mut().batch_invert();
 
+        // (Σ 1/(φ_i(X)) - m(X) / τ(X))
         let mut log_derivatives_diff = vec![C::Scalar::zero(); params.n() as usize];
         parallelize(&mut log_derivatives_diff, |log_derivatives_diff, start| {
             for (((log_derivative_diff, fi), ti), mi) in log_derivatives_diff
                 .iter_mut()
-                .zip(input_log_derivatives[start..].iter())
+                .zip(inputs_log_derivatives[start..].iter())
                 .zip(table_log_derivatives[start..].iter())
                 .zip(self.m_values[start..].iter())
             {
-                // (1/(f_i + α) - m(X) / (t(X) + α))
+                // (Σ 1/(φ_i(X)) - m(X) / τ(X))
                 *log_derivative_diff = *fi - *mi * *ti;
             }
         });
@@ -246,23 +286,48 @@ impl<C: CurveAffine> Prepared<C> {
         {
             // While in Lagrange basis, check that product is correctly constructed
             let u = (params.n() as usize) - (blinding_factors + 1);
-            // q(X) = ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X)) - (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))) mod zH(X)
+
+            /*
+                φ_i(X) = f_i(X) + α
+                τ(X) = t(X) + α
+                LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+                RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+            */
+
+            // q(X) = LHS - RHS mod zH(X)
 
             for i in 0..u {
+                // Π(φ_i(X))
+                let fi_prod = || {
+                    let mut prod = C::Scalar::one();
+                    for compressed_input_expression in self.compressed_inputs_expressions.iter() {
+                        prod *= *beta + compressed_input_expression[i];
+                    }
+
+                    prod
+                };
+
+                let fi_log_derivative = || {
+                    let mut sum = C::Scalar::zero();
+                    for compressed_input_expression in self.compressed_inputs_expressions.iter() {
+                        sum += (*beta + compressed_input_expression[i]).invert().unwrap();
+                    }
+
+                    sum
+                };
+
+                // LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
                 let lhs = {
-                    // ((t(X) + α) * (f_i(X) + α) * (ϕ(gX) - ϕ(X))
-                    (*beta + self.compressed_input_expression[i])
-                        * (*beta + self.compressed_table_expression[i])
+                    (*beta + self.compressed_table_expression[i])
+                        * fi_prod()
                         * (phi[i + 1] - phi[i])
                 };
 
+                // RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
                 let rhs = {
-                    // (t(X) + α) * (f_i + α) * (1/(f_i(X) + α) - m(X) / (t(X) + α))
-                    (*beta + self.compressed_input_expression[i])
-                        * (*beta + self.compressed_table_expression[i])
-                        * ((*beta + self.compressed_input_expression[i])
-                            .invert()
-                            .unwrap()
+                    (*beta + self.compressed_table_expression[i])
+                        * fi_prod()
+                        * (fi_log_derivative()
                             - self.m_values[i]
                                 * (*beta + self.compressed_table_expression[i])
                                     .invert()

@@ -8,7 +8,7 @@ use halo2_proofs::plonk::*;
 use halo2_proofs::poly::kzg::multiopen::VerifierGWC;
 use halo2_proofs::poly::{commitment::ParamsProver, Rotation};
 use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
-use halo2curves::bn256::{Bn256, G1Affine, G1, G2, G2Affine};
+use halo2curves::bn256::{Bn256, G1Affine, G2Affine, G1, G2};
 use halo2curves::pairing::Engine;
 use halo2curves::pasta::{EqAffine, Fp};
 use rand_core::OsRng;
@@ -200,7 +200,14 @@ fn criterion_benchmark(c: &mut Criterion) {
     fn verifier(params: &ParamsKZG<Bn256>, vk: &VerifyingKey<G1Affine>, proof: &[u8]) {
         let strategy = SingleStrategy::new(params);
         let mut transcript = Blake2bRead::<_, _, Challenge255<G1Affine>>::init(proof);
-        assert!(verify_proof::<KZGCommitmentScheme<Bn256>, VerifierGWC<'_, Bn256>, Challenge255<G1Affine>, Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>, SingleStrategy<'_, Bn256>>(params, vk, strategy, &[&[]], &mut transcript).is_ok());
+        assert!(verify_proof::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierGWC<'_, Bn256>,
+            Challenge255<G1Affine>,
+            Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+            SingleStrategy<'_, Bn256>,
+        >(params, vk, strategy, &[&[]], &mut transcript)
+        .is_ok());
     }
 
     let k_range = 11..=11;

@@ -508,8 +508,74 @@ impl<C: CurveAffine> Evaluator<C> {
                         });
                     }
 
-                    use std::time::{Duration, Instant};
-                    let start = Instant::now();
+                    /*
+                        lookup_1 = [exprs1, exprs2, t1]
+                        lookup_2 = [exprs3, exprs4, t2]
+
+                        for each lookup <- dimension 1
+                            for each expression <- dimesnion 2
+                                for each root in extended domain <- dimension 3
+
+                    */
+        
+                    // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + α)
+                    let inputs_inv_sum: Vec<Vec<Vec<_>>> = lookups
+                        .iter()
+                        .enumerate()
+                        .map(|(n, _)| {
+                            let (inputs_lookup_evaluator, _) = &self.lookups[n];
+                            let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
+                                .iter()
+                                .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
+                                .collect();
+
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
+
+                            let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
+                                Vec::with_capacity(self.lookups[n].0.len() << domain.k());
+                            for idx in 0..size {
+                                // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta
+                                let inputs_values: Vec<C::ScalarExt> = inputs_lookup_evaluator
+                                    .iter()
+                                    .zip(inputs_eval_data.iter_mut())
+                                    .map(|(input_lookup_evaluator, input_eval_data)| {
+                                        input_lookup_evaluator.evaluate(
+                                            input_eval_data,
+                                            fixed,
+                                            advice,
+                                            instance,
+                                            challenges,
+                                            &beta,
+                                            &gamma,
+                                            &theta,
+                                            &y,
+                                            &C::ScalarExt::zero(),
+                                            idx,
+                                            rot_scale,
+                                            isize,
+                                        )
+                                    })
+                                    .collect();
+
+                                inputs_values_for_extended_domain.extend_from_slice(&inputs_values);
+                            }
+
+                            inputs_values_for_extended_domain.batch_invert();
+
+                            // make again matrix of this
+                            let inputs_inv_sums: Vec<Vec<_>> = inputs_values_for_extended_domain
+                                .chunks_exact(self.lookups[n].0.len())
+                                .map(|c| c.to_vec())
+                                .collect();
+                                    inputs_inv_sums
+                        })
+                        .collect();
+
                     // Lookups
                     for (n, lookup) in lookups.iter().enumerate() {
                         // Polynomials required for this lookup.
@@ -538,8 +604,8 @@ impl<C: CurveAffine> Evaluator<C> {
                             for (i, value) in values.iter_mut().enumerate() {
                                 let idx = start + i;
 
-                                // f_i(X) + α
-                                let inputs_value: Vec<_> = inputs_lookup_evaluator
+                                // f_i(X) + α for i in expressions
+                                let inputs_value: Vec<C::ScalarExt> = inputs_lookup_evaluator
                                     .iter()
                                     .zip(inputs_eval_data.iter_mut())
                                     .map(|(input_lookup_evaluator, input_eval_data)| {
@@ -566,10 +632,13 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .iter()
                                     .fold(C::Scalar::one(), |acc, input| acc * input);
 
-                                // ∑ 1/(φ_i(X))
-                                let mut inputs_inv_sum: Vec<_> = inputs_value.clone();
-                                inputs_inv_sum.batch_invert();
-                                let inputs_inv_sum = inputs_inv_sum
+                                // let mut inputs_inv_sum: Vec<_> = inputs_value.clone();
+                                // inputs_inv_sum.batch_invert();
+                                // let inputs_inv_sum = inputs_inv_sum
+                                //     .iter()
+                                //     .fold(C::Scalar::zero(), |acc, input| acc + input);
+                                let fi_inverses = &inputs_inv_sum[n][idx];
+                                let inputs_inv_sum = fi_inverses
                                     .iter()
                                     .fold(C::Scalar::zero(), |acc, input| acc + input);
 
@@ -615,10 +684,6 @@ impl<C: CurveAffine> Evaluator<C> {
                             }
                         });
                     }
-                    println!(
-                        "lookup in evaluate_h: at least {}ms",
-                        Instant::now().duration_since(start).as_micros() as f64 / 1_000f64
-                    );
                 }
                 current_extended_omega *= extended_omega;
                 values

@@ -8,7 +8,7 @@ use halo2_proofs::plonk::*;
 use halo2_proofs::poly::kzg::multiopen::VerifierGWC;
 use halo2_proofs::poly::{commitment::ParamsProver, Rotation};
 use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
-use halo2curves::bn256::{Bn256, G1Affine, G2Affine, G1, G2};
+use halo2curves::bn256::{Bn256, G1Affine, G1, G2, G2Affine};
 use halo2curves::pairing::Engine;
 use halo2curves::pasta::{EqAffine, Fp};
 use rand_core::OsRng;
@@ -59,15 +59,18 @@ fn criterion_benchmark(c: &mut Criterion) {
                 other_advice: meta.advice_column(),
             };
 
+            let dummy_selector = meta.complex_selector();
+
             // meta.set_minimum_degree(16);
 
             meta.lookup("lookup", |meta| {
                 let selector = meta.query_selector(config.selector);
+                let dummy_selector = meta.query_selector(dummy_selector);
                 let not_selector = Expression::Constant(F::one()) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
                 let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
                 vec![(
-                    selector.clone() * advice + not_selector.clone(),
+                    dummy_selector.clone() * dummy_selector * advice,
                     config.table,
                 )]
             });
@@ -132,7 +135,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             || format!("row {}", row),
                             config.table,
                             row as usize,
-                            || Value::known(F::from(row + 1)),
+                            || Value::known(F::from(row)),
                         )?;
                     }
 
@@ -149,7 +152,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             || format!("offset {}", offset),
                             config.advice,
                             offset as usize,
-                            || Value::known(F::from((offset % 256) + 1)),
+                            || Value::known(F::from((offset % 256))),
                         )?;
                     }
                     for offset in 1u64..(1 << 10) {
@@ -158,7 +161,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             || format!("offset {}", offset),
                             config.other_advice,
                             offset as usize - 1,
-                            || Value::known(F::from((offset % 256) + 1)),
+                            || Value::known(F::from((offset % 256))),
                         )?;
                     }
                     Ok(())
@@ -200,14 +203,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     fn verifier(params: &ParamsKZG<Bn256>, vk: &VerifyingKey<G1Affine>, proof: &[u8]) {
         let strategy = SingleStrategy::new(params);
         let mut transcript = Blake2bRead::<_, _, Challenge255<G1Affine>>::init(proof);
-        assert!(verify_proof::<
-            KZGCommitmentScheme<Bn256>,
-            VerifierGWC<'_, Bn256>,
-            Challenge255<G1Affine>,
-            Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
-            SingleStrategy<'_, Bn256>,
-        >(params, vk, strategy, &[&[]], &mut transcript)
-        .is_ok());
+        assert!(verify_proof::<KZGCommitmentScheme<Bn256>, VerifierGWC<'_, Bn256>, Challenge255<G1Affine>, Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>, SingleStrategy<'_, Bn256>>(params, vk, strategy, &[&[]], &mut transcript).is_ok());
     }
 
     let k_range = 11..=11;

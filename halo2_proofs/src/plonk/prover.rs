@@ -58,14 +58,13 @@ pub fn create_proof<
 ) -> Result<(), Error> {
     #[cfg(feature = "counter")]
     {
-        use std::collections::BTreeMap;
         use crate::{FFT_COUNTER, MSM_COUNTER};
+        use std::collections::BTreeMap;
 
         // reset counters at the beginning of the prove
         *MSM_COUNTER.lock().unwrap() = BTreeMap::new();
         *FFT_COUNTER.lock().unwrap() = BTreeMap::new();
     }
-
 
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
@@ -756,8 +755,8 @@ pub fn create_proof<
 
     #[cfg(feature = "counter")]
     {
-        use std::collections::BTreeMap;
         use crate::{FFT_COUNTER, MSM_COUNTER};
+        use std::collections::BTreeMap;
         println!("MSM_COUNTER: {:?}", MSM_COUNTER.lock().unwrap());
         println!("FFT_COUNTER: {:?}", *FFT_COUNTER.lock().unwrap());
 

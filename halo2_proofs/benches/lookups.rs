@@ -5,16 +5,19 @@ use group::ff::Field;
 use halo2_proofs::arithmetic::FieldExt;
 use halo2_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::*;
+use halo2_proofs::poly::kzg::multiopen::VerifierGWC;
 use halo2_proofs::poly::{commitment::ParamsProver, Rotation};
 use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
+use halo2curves::bn256::{Bn256, G1Affine, G1, G2, G2Affine};
+use halo2curves::pairing::Engine;
 use halo2curves::pasta::{EqAffine, Fp};
 use rand_core::OsRng;
 
 use halo2_proofs::{
     poly::{
-        ipa::{
-            commitment::{IPACommitmentScheme, ParamsIPA},
-            multiopen::ProverIPA,
+        kzg::{
+            commitment::{KZGCommitmentScheme, ParamsKZG},
+            multiopen::ProverGWC,
             strategy::SingleStrategy,
         },
         VerificationStrategy,
@@ -164,9 +167,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         }
     }
 
-    fn keygen(k: u32) -> (ParamsIPA<EqAffine>, ProvingKey<EqAffine>) {
-        let params: ParamsIPA<EqAffine> = ParamsIPA::new(k);
-        let empty_circuit: MyCircuit<Fp> = MyCircuit {
+    fn keygen(k: u32) -> (ParamsKZG<Bn256>, ProvingKey<G1Affine>) {
+        let params: ParamsKZG<Bn256> = ParamsKZG::new(k);
+        let empty_circuit: MyCircuit<<Bn256 as Engine>::Scalar> = MyCircuit {
             _marker: PhantomData,
         };
         let vk = keygen_vk(&params, &empty_circuit).expect("keygen_vk should not fail");
@@ -174,15 +177,15 @@ fn criterion_benchmark(c: &mut Criterion) {
         (params, pk)
     }
 
-    fn prover(k: u32, params: &ParamsIPA<EqAffine>, pk: &ProvingKey<EqAffine>) -> Vec<u8> {
+    fn prover(k: u32, params: &ParamsKZG<Bn256>, pk: &ProvingKey<G1Affine>) -> Vec<u8> {
         let rng = OsRng;
 
-        let circuit: MyCircuit<Fp> = MyCircuit {
+        let circuit: MyCircuit<<Bn256 as Engine>::Scalar> = MyCircuit {
             _marker: PhantomData,
         };
 
-        let mut transcript = Blake2bWrite::<_, _, Challenge255<EqAffine>>::init(vec![]);
-        create_proof::<IPACommitmentScheme<EqAffine>, ProverIPA<EqAffine>, _, _, _, _>(
+        let mut transcript = Blake2bWrite::<_, _, Challenge255<G1Affine>>::init(vec![]);
+        create_proof::<KZGCommitmentScheme<Bn256>, ProverGWC<'_, Bn256>, _, _, _, _>(
             params,
             pk,
             &[circuit],
@@ -194,10 +197,10 @@ fn criterion_benchmark(c: &mut Criterion) {
         transcript.finalize()
     }
 
-    fn verifier(params: &ParamsIPA<EqAffine>, vk: &VerifyingKey<EqAffine>, proof: &[u8]) {
+    fn verifier(params: &ParamsKZG<Bn256>, vk: &VerifyingKey<G1Affine>, proof: &[u8]) {
         let strategy = SingleStrategy::new(params);
-        let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(proof);
-        assert!(verify_proof(params, vk, strategy, &[&[]], &mut transcript).is_ok());
+        let mut transcript = Blake2bRead::<_, _, Challenge255<G1Affine>>::init(proof);
+        assert!(verify_proof::<KZGCommitmentScheme<Bn256>, VerifierGWC<'_, Bn256>, Challenge255<G1Affine>, Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>, SingleStrategy<'_, Bn256>>(params, vk, strategy, &[&[]], &mut transcript).is_ok());
     }
 
     let k_range = 11..=11;

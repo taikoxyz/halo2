@@ -1,16 +1,14 @@
 #[macro_use]
 extern crate criterion;
 
-use group::ff::Field;
 use halo2_proofs::arithmetic::FieldExt;
-use halo2_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
+use halo2_proofs::circuit::{Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::*;
 use halo2_proofs::poly::kzg::multiopen::VerifierGWC;
 use halo2_proofs::poly::{commitment::ParamsProver, Rotation};
 use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
-use halo2curves::bn256::{Bn256, G1Affine, G1, G2, G2Affine};
+use halo2curves::bn256::{Bn256, G1Affine};
 use halo2curves::pairing::Engine;
-use halo2curves::pasta::{EqAffine, Fp};
 use rand_core::OsRng;
 
 use halo2_proofs::{
@@ -20,7 +18,6 @@ use halo2_proofs::{
             multiopen::ProverGWC,
             strategy::SingleStrategy,
         },
-        VerificationStrategy,
     },
     transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
 };
@@ -61,63 +58,46 @@ fn criterion_benchmark(c: &mut Criterion) {
 
             let dummy_selector = meta.complex_selector();
 
-            // meta.set_minimum_degree(16);
-
-            meta.lookup("lookup", |meta| {
-                let selector = meta.query_selector(config.selector);
+            meta.create_gate("degree 6 gate", |meta| {
                 let dummy_selector = meta.query_selector(dummy_selector);
-                let not_selector = Expression::Constant(F::one()) - selector.clone();
-                let advice = meta.query_advice(config.advice, Rotation::cur());
-                let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
-                vec![(
-                    dummy_selector.clone() * dummy_selector * advice,
-                    config.table,
-                )]
+                let constraints = vec![dummy_selector.clone(); 4].iter().fold(dummy_selector.clone(), |acc, val| acc * val.clone());
+                Constraints::with_selector(dummy_selector, Some(constraints))
             });
 
             meta.lookup("lookup", |meta| {
-                let selector = meta.query_selector(config.selector);
-                let not_selector = Expression::Constant(F::one()) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
-                let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
-                vec![(
-                    selector.clone() * advice + not_selector.clone(),
-                    config.table,
-                )]
+                vec![(advice, config.table)]
             });
 
             meta.lookup("lookup", |meta| {
-                let selector = meta.query_selector(config.selector);
-                let not_selector = Expression::Constant(F::one()) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
-                let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
-                vec![(
-                    selector.clone() * advice + not_selector.clone(),
-                    config.table,
-                )]
+                vec![(advice, config.table)]
             });
 
             meta.lookup("lookup", |meta| {
-                let selector = meta.query_selector(config.selector);
-                let not_selector = Expression::Constant(F::one()) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
-                let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
-                vec![(
-                    selector.clone() * advice + not_selector.clone(),
-                    config.table,
-                )]
+                vec![(advice, config.table)]
             });
 
             meta.lookup("lookup", |meta| {
-                let selector = meta.query_selector(config.selector);
-                let not_selector = Expression::Constant(F::one()) - selector.clone();
                 let advice = meta.query_advice(config.advice, Rotation::cur());
-                let other_advice = meta.query_advice(config.other_advice, Rotation::cur());
-                vec![(
-                    selector.clone() * advice + not_selector.clone(),
-                    config.table,
-                )]
+                vec![(advice, config.table)]
             });
+
+            meta.lookup("lookup", |meta| {
+                let advice = meta.query_advice(config.advice, Rotation::cur());
+                vec![(advice, config.table)]
+            });
+
+            /*
+                - We need degree at least 6 because 6 - 1 = 5 and we need to go to extended domain of 8n
+                - Our goal is to get to max degree of 9 because now 9 - 1 = 8 and that will fit into domain
+            
+                - base degree = table_deg + 2 
+                - if we put input_expression_degree = 1
+                => degree = base + 1 = 3 + 1 = 4
+                - we can batch one more with 5 more lookups
+            */
 
             config
         }
@@ -203,10 +183,17 @@ fn criterion_benchmark(c: &mut Criterion) {
     fn verifier(params: &ParamsKZG<Bn256>, vk: &VerifyingKey<G1Affine>, proof: &[u8]) {
         let strategy = SingleStrategy::new(params);
         let mut transcript = Blake2bRead::<_, _, Challenge255<G1Affine>>::init(proof);
-        assert!(verify_proof::<KZGCommitmentScheme<Bn256>, VerifierGWC<'_, Bn256>, Challenge255<G1Affine>, Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>, SingleStrategy<'_, Bn256>>(params, vk, strategy, &[&[]], &mut transcript).is_ok());
+        assert!(verify_proof::<
+            KZGCommitmentScheme<Bn256>,
+            VerifierGWC<'_, Bn256>,
+            Challenge255<G1Affine>,
+            Blake2bRead<&[u8], G1Affine, Challenge255<G1Affine>>,
+            SingleStrategy<'_, Bn256>,
+        >(params, vk, strategy, &[&[]], &mut transcript)
+        .is_ok());
     }
 
-    let k_range = 11..=11;
+    let k_range = 16..=16;
 
     let mut keygen_group = c.benchmark_group("plonk-keygen");
     keygen_group.sample_size(10);

@@ -2,6 +2,7 @@
 #![allow(clippy::op_ref)]
 
 use assert_matches::assert_matches;
+use ff::PrimeField;
 use halo2_proofs::arithmetic::{Field, FieldExt};
 use halo2_proofs::circuit::{Cell, Layouter, Region, SimpleFloorPlanner, Value};
 use halo2_proofs::dev::MockProver;
@@ -301,6 +302,8 @@ fn plonk_api() {
             let dummy = meta.complex_selector();
             let dummy_2 = meta.complex_selector();
             let dummy_3 = meta.complex_selector();
+
+
 
             let dummy_table = meta.lookup_table_column();
 

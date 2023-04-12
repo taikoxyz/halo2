@@ -5,20 +5,7 @@ use std::fmt::{self, Debug};
 pub(crate) mod prover;
 pub(crate) mod verifier;
 
-/*
-   map (table_vec_expressions, [input_expressions])
-
-   lookup_arguments: [(table_vec_expressions, [input_expressions)]
-
-   // iter this map:
-   {
-       table_vec_expressions, vec<vec<input_expressions>>
-
-       // compute degree, if it's bigger than some bound
-           -> create new lookup_argument: table_vec_expressions, empty
-   }
-*/
-
+/// Degree of lookup without inputs
 pub fn base_degree(table_degree: usize) -> usize {
     // let lhs_degree = table_degree + inputs_expressions_degree + 1
     // let degree = lhs_degree + 1

@@ -14,11 +14,13 @@ use crate::{
     transcript::{EncodedChallenge, TranscriptWrite},
 };
 use blake2b_simd::Hash;
+use ff::{BitViewSized, PrimeField, PrimeFieldBits};
 use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
 use rand_core::RngCore;
+use rayon::current_num_threads;
 use std::collections::{BTreeSet, HashSet};
 use std::{any::TypeId, convert::TryInto, num::ParseIntError, ops::Index};
 use std::{
@@ -26,6 +28,8 @@ use std::{
     iter,
     ops::{Mul, MulAssign},
 };
+
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {
@@ -111,24 +115,26 @@ impl<F: FieldExt> Argument<F> {
             .map(|(i, &x)| (x, i))
             .collect();
 
-        let mut m_values = domain.empty_lagrange();
+        let m_values: Vec<F> = {
+            use std::sync::RwLock;
+            use std::sync::atomic::{AtomicU64, Ordering};
+            let m_values: Vec<AtomicU64> = (0..params.n()).map(|_| AtomicU64::new(0)).collect();
 
-        let mut update_multiplicities =
-            |compressed_expressions: &Polynomial<C::Scalar, LagrangeCoeff>| {
-                compressed_expressions
-                    .iter()
-                    .take(params.n() as usize - blinding_factors - 1)
-                    .for_each(|fi| {
-                        let index = table_index_value_mapping
-                            .get(fi)
-                            .expect(&format!("value: {:?} not in table", fi));
-                        m_values[*index] += C::Scalar::one();
-                    });
-            };
+            for compressed_input_expression in compressed_inputs_expressions.iter() {
+                compressed_input_expression.par_iter().take(params.n() as usize - blinding_factors - 1).for_each(|fi| {
+                    let index = table_index_value_mapping
+                        .get(fi)
+                        .unwrap();
+                    m_values[*index].fetch_add(1, Ordering::Relaxed);
+                });
+            }
 
-        compressed_inputs_expressions
-            .iter()
-            .for_each(|cs_input_expr| update_multiplicities(cs_input_expr));
+            m_values
+            .par_iter()
+            .map(|mi| F::from(mi.load(Ordering::Relaxed) as u64))
+            .collect()
+        };
+        let m_values = pk.vk.domain.lagrange_from_vec(m_values);
 
         #[cfg(feature = "sanity-checks")]
         {
@@ -162,8 +168,6 @@ impl<F: FieldExt> Argument<F> {
             for compressed_input_expression in compressed_inputs_expressions.iter() {
                 lhs_sum += cs_input_sum(compressed_input_expression);
             }
-
-            // let lhs_sum: &C::Scalar = compressed_inputs_expressions.map(|compressed_input_expression| cs_input_sum(&compressed_input_expression)).fold(C::Scalar::zero(), |acc, val| return acc + &val);
 
             let mut rhs_sum = C::Scalar::zero();
             for (&ti, &mi) in compressed_table_expression.iter().zip(m_values.iter()) {
@@ -227,7 +231,8 @@ impl<C: CurveAffine> Prepared<C> {
                 },
             );
             input_log_derivatives.iter_mut().batch_invert();
-            // TODO: remove last blnders from this
+
+            // TODO: remove last blinders from this
             for i in 0..params.n() as usize {
                 inputs_log_derivatives[i] += input_log_derivatives[i];
             }
@@ -246,6 +251,7 @@ impl<C: CurveAffine> Prepared<C> {
                 }
             },
         );
+
         table_log_derivatives.iter_mut().batch_invert();
 
         // (Σ 1/(φ_i(X)) - m(X) / τ(X))
@@ -295,7 +301,6 @@ impl<C: CurveAffine> Prepared<C> {
             */
 
             // q(X) = LHS - RHS mod zH(X)
-
             for i in 0..u {
                 // Π(φ_i(X))
                 let fi_prod = || {

@@ -1,4 +1,4 @@
-use ff::Field;
+use ff::{Field, PrimeField};
 use group::Curve;
 use halo2curves::CurveExt;
 use rand_core::RngCore;
@@ -55,7 +55,10 @@ pub fn create_proof<
     instances: &[&[&[Scheme::Scalar]]],
     mut rng: R,
     transcript: &mut T,
-) -> Result<(), Error> {
+) -> Result<(), Error>
+where
+    Scheme::Scalar: PrimeField,
+{
     #[cfg(feature = "counter")]
     {
         use crate::{FFT_COUNTER, MSM_COUNTER};

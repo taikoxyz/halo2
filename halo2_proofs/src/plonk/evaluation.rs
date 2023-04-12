@@ -508,17 +508,10 @@ impl<C: CurveAffine> Evaluator<C> {
                         });
                     }
 
-                    /*
-                        lookup_1 = [exprs1, exprs2, t1]
-                        lookup_2 = [exprs3, exprs4, t2]
-
-                        for each lookup <- dimension 1
-                            for each expression <- dimesnion 2
-                                for each root in extended domain <- dimension 3
-
-                    */
-        
                     // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + α)
+                    // The outer vector has capacity self.lookups.len()
+                    // The middle vector has capacity domain.extended_len()
+                    // The inner vector has capacity 
                     let inputs_inv_sum: Vec<Vec<Vec<_>>> = lookups
                         .iter()
                         .enumerate()
@@ -529,17 +522,11 @@ impl<C: CurveAffine> Evaluator<C> {
                                 .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
                                 .collect();
 
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-                            // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta  -> sum
-
                             let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
                                 Vec::with_capacity(self.lookups[n].0.len() << domain.k());
                             for idx in 0..size {
-                                // f1(wi) + beta, f2(wi) + beta, f3(wi) + beta
+                                // For each compressed input column, evaluate at ω^i and add beta
+                                // This is a vector of length self.lookups[n].0.len()
                                 let inputs_values: Vec<C::ScalarExt> = inputs_lookup_evaluator
                                     .iter()
                                     .zip(inputs_eval_data.iter_mut())
@@ -567,12 +554,13 @@ impl<C: CurveAffine> Evaluator<C> {
 
                             inputs_values_for_extended_domain.batch_invert();
 
-                            // make again matrix of this
+                            // The outer vector has capacity domain.extended_len()
+                            // The inner vector has capacity self.lookups[n].0.len()
                             let inputs_inv_sums: Vec<Vec<_>> = inputs_values_for_extended_domain
                                 .chunks_exact(self.lookups[n].0.len())
                                 .map(|c| c.to_vec())
                                 .collect();
-                                    inputs_inv_sums
+                            inputs_inv_sums
                         })
                         .collect();
 
@@ -632,11 +620,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .iter()
                                     .fold(C::Scalar::one(), |acc, input| acc * input);
 
-                                // let mut inputs_inv_sum: Vec<_> = inputs_value.clone();
-                                // inputs_inv_sum.batch_invert();
-                                // let inputs_inv_sum = inputs_inv_sum
-                                //     .iter()
-                                //     .fold(C::Scalar::zero(), |acc, input| acc + input);
+                                // f_i(X) + α at ω^idx
                                 let fi_inverses = &inputs_inv_sum[n][idx];
                                 let inputs_inv_sum = fi_inverses
                                     .iter()

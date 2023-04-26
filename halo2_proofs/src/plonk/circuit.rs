@@ -69,9 +69,9 @@ impl<C: ColumnType> Column<C> {
         self.query_cell(Rotation::prev())
     }
 
-    /// Return expression from column at the specified row
-    pub fn at<F: Field>(&self, at: usize) -> Expression<F> {
-        self.query_cell(Rotation(at as i32))
+    /// Return expression from column at the specified rotation
+    pub fn rot<F: Field>(&self, rotation: i32) -> Expression<F> {
+        self.query_cell(Rotation(rotation))
     }
 }
 

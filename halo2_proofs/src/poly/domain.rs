@@ -2,9 +2,9 @@
 //! domain that is of a suitable size for the application.
 
 use crate::{
+    arithmetic::{best_fft, parallelize, parallelize_count, Field as FieldExt},
     multicore,
     plonk::{get_duration, get_time, start_measure, stop_measure, Assigned},
-    rithmetic::{best_fft, parallelize},
 };
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
@@ -540,8 +540,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             extended_ifft_divisor,
             t_evaluations,
             barycentric_weight,
-            fft_data: FFTData::<G::Scalar>::new(n as usize, omega, omega_inv),
-            extended_fft_data: FFTData::<G::Scalar>::new(
+            fft_data: FFTData::<F>::new(n as usize, omega, omega_inv),
+            extended_fft_data: FFTData::<F>::new(
                 (1 << extended_k) as usize,
                 extended_omega,
                 extended_omega_inv,
@@ -765,7 +765,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         });
     }
 
-    fn fft_inner(&self, a: &mut Vec<G::Scalar>, omega: G::Scalar, log_n: u32, inverse: bool) {
+    fn fft_inner(&self, a: &mut Vec<F>, omega: F, log_n: u32, inverse: bool) {
         let start = get_time();
         if get_fft_mode() == 1 {
             let fft_data = if a.len() == self.fft_data.n {

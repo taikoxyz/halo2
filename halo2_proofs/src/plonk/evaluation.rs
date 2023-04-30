@@ -309,7 +309,7 @@ impl<C: CurveAffine> Evaluator<C> {
             .map(|advice_polys| {
                 advice_polys
                     .iter()
-                    .map(|poly| domain.coeff_to_extended(poly))
+                    .map(|&poly| domain.coeff_to_extended(poly))
                     .collect()
             })
             .collect();
@@ -318,7 +318,7 @@ impl<C: CurveAffine> Evaluator<C> {
             .map(|instance_polys| {
                 instance_polys
                     .iter()
-                    .map(|poly| domain.coeff_to_extended(poly))
+                    .map(|&poly| domain.coeff_to_extended(poly))
                     .collect()
             })
             .collect();
@@ -455,11 +455,11 @@ impl<C: CurveAffine> Evaluator<C> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = pk.vk.domain.coeff_to_extended(&lookup.product_poly);
+                let product_coset = pk.vk.domain.coeff_to_extended(lookup.product_poly);
                 let permuted_input_coset =
-                    pk.vk.domain.coeff_to_extended(&lookup.permuted_input_poly);
+                    pk.vk.domain.coeff_to_extended(lookup.permuted_input_poly);
                 let permuted_table_coset =
-                    pk.vk.domain.coeff_to_extended(&lookup.permuted_table_poly);
+                    pk.vk.domain.coeff_to_extended(lookup.permuted_table_poly);
 
                 // Lookup constraints
                 parallelize(&mut values, |values, start| {

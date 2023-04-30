@@ -322,7 +322,7 @@ where
 
     let fixed_cosets = fixed_polys
         .iter()
-        .map(|&poly| vk.domain.coeff_to_extended(poly))
+        .map(|poly| vk.domain.coeff_to_extended(poly.to_owned()))
         .collect();
 
     let permutation_pk = assembly

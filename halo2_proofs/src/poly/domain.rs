@@ -653,7 +653,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         best_fft(&mut a.values, self.extended_omega, self.extended_k);
 
         Polynomial {
-            values: a,
+            values: a.to_vec(),
             _marker: PhantomData,
         }
     }

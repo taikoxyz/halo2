@@ -85,7 +85,7 @@ impl<F: FieldExt> FFTData<F> {
         let stages = get_stages(n as usize, vec![]);
         let mut f_twiddles = vec![];
         let mut inv_twiddles = vec![];
-        let mut scratch = vec![F::zero(); n];
+        let mut scratch = vec![F::ZERO; n];
 
         // Generate stage twiddles
         for inv in 0..2 {
@@ -117,7 +117,7 @@ impl<F: FieldExt> FFTData<F> {
                 let stage_length = stages[l].length;
 
                 let num_twiddles = stage_length * (radix - 1);
-                stage_twiddles[l].resize(num_twiddles + 1, F::zero());
+                stage_twiddles[l].resize(num_twiddles + 1, F::ZERO);
 
                 // Set j
                 stage_twiddles[l][num_twiddles] = twiddles[(twiddles.len() * 3) / 4];
@@ -384,7 +384,7 @@ fn recursive_fft<F: FieldExt>(data: &FFTData<F>, data_in: &mut Vec<F>, inverse: 
 
     // TODO: reuse scratch buffer between FFTs
     //let start_mem = start_measure(format!("alloc"), false);
-    let mut scratch = vec![F::zero(); data_in.len()];
+    let mut scratch = vec![F::ZERO; data_in.len()];
     //stop_measure(start_mem);
 
     recursive_fft_inner(

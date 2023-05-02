@@ -999,7 +999,7 @@ fn test_fft() {
     let n = domain.n as usize;
 
     let input = vec![Scalar::random(OsRng); n];
-    /*let mut input = vec![Scalar::zero(); n];
+    /*let mut input = vec![Scalar::ZERO; n];
     for i in 0..n {
         input[i] = Scalar::random(OsRng);
     }*/

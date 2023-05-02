@@ -632,7 +632,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), 1 << self.k);
 
         // Perform inverse FFT to obtain the polynomial in coefficient form
-        Self::ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
+        self.ifft(&mut a.values, self.omega_inv, self.k, self.ifft_divisor);
 
         Polynomial {
             values: a.values,
@@ -687,7 +687,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         assert_eq!(a.values.len(), self.extended_len());
 
         // Inverse FFT
-        Self::ifft(
+        self.ifft(
             &mut a.values,
             self.extended_omega_inv,
             self.extended_k,
@@ -755,8 +755,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         });
     }
 
-    fn ifft(a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
-        best_fft(a, omega_inv, log_n);
+    fn ifft(&self, a: &mut [F], omega_inv: F, log_n: u32, divisor: F) {
+        self.fft_inner(a, omega_inv, log_n, true);
         parallelize(a, |a, _| {
             for a in a {
                 // Finish iFFT

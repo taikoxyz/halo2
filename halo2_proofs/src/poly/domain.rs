@@ -995,7 +995,7 @@ fn test_fft() {
     }
     let k = get_degree() as u32;
 
-    let mut domain = EvaluationDomain::<Scalar>::new(1, k);
+    let domain = EvaluationDomain::<Scalar>::new(1, k);
     let n = domain.n as usize;
 
     let input = vec![Scalar::random(OsRng); n];
@@ -1011,12 +1011,12 @@ fn test_fft() {
     best_fft(&mut a, domain.omega, k);
     stop_measure(start);
 
-    let mut b = input.clone();
+    let mut b = input;
     let start = start_measure(
         format!("recursive fft {} ({})", a.len(), num_threads),
         false,
     );
-    recursive_fft(&mut domain.fft_data, &mut b, false);
+    recursive_fft(&domain.fft_data, &mut b, false);
     stop_measure(start);
 
     for i in 0..n {

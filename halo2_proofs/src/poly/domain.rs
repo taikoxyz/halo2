@@ -2,7 +2,7 @@
 //! domain that is of a suitable size for the application.
 
 use crate::{
-    arithmetic::{best_fft, parallelize, parallelize_count, Field as FieldExt},
+    arithmetic::{self, best_fft, parallelize, parallelize_count},
     multicore,
     plonk::{get_duration, get_time, start_measure, stop_measure, Assigned},
 };
@@ -10,7 +10,7 @@ use crate::{
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use ff::WithSmallOrderMulGroup;
 use group::{
-    ff::{BatchInvert, Field, PrimeField},
+    ff::{self, BatchInvert, Field, PrimeField},
     Group,
 };
 
@@ -69,7 +69,7 @@ pub fn get_stages(size: usize, radixes: Vec<usize>) -> Vec<FFTStage> {
 
 /// FFTData
 #[derive(Clone, Debug)]
-struct FFTData<F: FieldExt> {
+struct FFTData<F: arithmetic::Field> {
     n: usize,
 
     stages: Vec<FFTStage>,
@@ -79,7 +79,7 @@ struct FFTData<F: FieldExt> {
     //scratch: Vec<F>,
 }
 
-impl<F: FieldExt> FFTData<F> {
+impl<F: arithmetic::Field> FFTData<F> {
     /// Create FFT data
     pub fn new(n: usize, omega: F, omega_inv: F) -> Self {
         let stages = get_stages(n as usize, vec![]);
@@ -144,7 +144,7 @@ impl<F: FieldExt> FFTData<F> {
 }
 
 /// Radix 2 butterfly
-pub fn butterfly_2<F: FieldExt>(out: &mut [F], twiddles: &[F], stage_length: usize) {
+pub fn butterfly_2<F: arithmetic::Field>(out: &mut [F], twiddles: &[F], stage_length: usize) {
     let mut out_offset = 0;
     let mut out_offset2 = stage_length;
 
@@ -164,7 +164,7 @@ pub fn butterfly_2<F: FieldExt>(out: &mut [F], twiddles: &[F], stage_length: usi
 }
 
 /// Radix 2 butterfly
-fn butterfly_2_parallel<F: FieldExt>(
+fn butterfly_2_parallel<F: arithmetic::Field>(
     out: &mut [F],
     twiddles: &[F],
     _stage_length: usize,
@@ -196,7 +196,7 @@ fn butterfly_2_parallel<F: FieldExt>(
 }
 
 /// Radix 4 butterfly
-pub fn butterfly_4<F: FieldExt>(out: &mut [F], twiddles: &[F], stage_length: usize) {
+pub fn butterfly_4<F: arithmetic::Field>(out: &mut [F], twiddles: &[F], stage_length: usize) {
     let j = twiddles[twiddles.len() - 1];
     let mut tw = 0;
 
@@ -251,7 +251,7 @@ pub fn butterfly_4<F: FieldExt>(out: &mut [F], twiddles: &[F], stage_length: usi
 }
 
 /// Radix 4 butterfly
-pub fn butterfly_4_parallel<F: FieldExt>(
+pub fn butterfly_4_parallel<F: arithmetic::Field>(
     out: &mut [F],
     twiddles: &[F],
     _stage_length: usize,
@@ -304,7 +304,7 @@ pub fn butterfly_4_parallel<F: FieldExt>(
 }
 
 /// Inner recursion
-fn recursive_fft_inner<F: FieldExt>(
+fn recursive_fft_inner<F: arithmetic::Field>(
     data_in: &[F],
     data_out: &mut [F],
     twiddles: &Vec<Vec<F>>,
@@ -378,7 +378,7 @@ fn recursive_fft_inner<F: FieldExt>(
     }
 }
 
-fn recursive_fft<F: FieldExt>(data: &FFTData<F>, data_in: &mut Vec<F>, inverse: bool) {
+fn recursive_fft<F: arithmetic::Field>(data: &FFTData<F>, data_in: &mut Vec<F>, inverse: bool) {
     let num_threads = multicore::current_num_threads();
     //let start = start_measure(format!("recursive fft {} ({})", data_in.len(), num_threads), false);
 
@@ -413,7 +413,7 @@ fn recursive_fft<F: FieldExt>(data: &FFTData<F>, data_in: &mut Vec<F>, inverse: 
 /// performing operations on an evaluation domain of size $2^k$ and an extended
 /// domain of size $2^{k} * j$ with $j \neq 0$.
 #[derive(Clone, Debug)]
-pub struct EvaluationDomain<F: Field> {
+pub struct EvaluationDomain<F: ff::Field> {
     n: u64,
     k: u32,
     extended_k: u32,
@@ -904,7 +904,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 /// Represents the minimal parameters that determine an `EvaluationDomain`.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct PinnedEvaluationDomain<'a, F: Field> {
+pub struct PinnedEvaluationDomain<'a, F: ff::Field> {
     k: &'a u32,
     extended_k: &'a u32,
     omega: &'a F,

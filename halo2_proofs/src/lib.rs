@@ -26,7 +26,7 @@
 #![allow(clippy::derive_partial_eq_without_eq)]
 
 pub mod arithmetic;
-//pub mod arithmetic_brecht;
+pub mod arithmetic_brecht;
 pub mod arithmetic_scroll;
 pub mod circuit;
 pub use halo2curves;

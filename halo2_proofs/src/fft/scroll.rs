@@ -3,7 +3,7 @@
 
 use crate::arithmetic::{log2_floor, FftGroup};
 
-use super::multicore;
+use crate::multicore;
 pub use ff::Field;
 use group::{
     ff::{BatchInvert, PrimeField},
@@ -11,6 +11,7 @@ use group::{
 };
 pub use halo2curves::{CurveAffine, CurveExt};
 use std::time::Instant;
+
 /// A constant
 pub const SPARSE_TWIDDLE_DEGREE: u32 = 10;
 

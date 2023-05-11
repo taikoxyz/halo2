@@ -1,9 +1,11 @@
 //! This module provides common utilities, traits and structures for group,
 //! field and polynomial arithmetic.
 
-use crate::arithmetic::{log2_floor, FftGroup};
+use crate::{
+    arithmetic::{log2_floor, FftGroup},
+    multicore,
+};
 
-use super::multicore;
 pub use ff::Field;
 use group::{
     ff::{BatchInvert, PrimeField},

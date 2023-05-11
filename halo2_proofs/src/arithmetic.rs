@@ -6,9 +6,9 @@ pub use ff::Field;
 use ff::PrimeField;
 use group::{ff::BatchInvert, Curve, Group, GroupOpsOwned, ScalarMulOwned};
 
-use crate::arithmetic_brecht;
-use crate::arithmetic_scroll;
-pub use crate::arithmetic_scroll::best_fft_opt;
+use crate::fft::brecht;
+use crate::fft::scroll;
+pub use crate::fft::scroll::best_fft_opt;
 
 use crate::multicore;
 
@@ -194,8 +194,8 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 /// Dispatcher
 pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
     match env::var("FFT") {
-        Ok(fft_impl) if fft_impl == "brecht" => arithmetic_brecht::best_fft(a, omega, log_n),
-        Ok(fft_impl) if fft_impl == "scroll" => arithmetic_scroll::best_fft(a, omega, log_n),
+        Ok(fft_impl) if fft_impl == "brecht" => brecht::best_fft(a, omega, log_n),
+        Ok(fft_impl) if fft_impl == "scroll" => scroll::best_fft(a, omega, log_n),
         Ok(fft_impl) => panic!("Unknown FFT implementation {fft_impl}"),
         _ => panic!("Please specify environment variable FFT"),
     }

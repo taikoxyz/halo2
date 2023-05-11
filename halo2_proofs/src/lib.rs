@@ -26,9 +26,8 @@
 #![allow(clippy::derive_partial_eq_without_eq)]
 
 pub mod arithmetic;
-pub mod arithmetic_brecht;
-pub mod arithmetic_scroll;
 pub mod circuit;
+mod fft;
 pub use halo2curves;
 mod multicore;
 pub mod plonk;

@@ -14,6 +14,8 @@ use crate::multicore;
 
 pub use halo2curves::{CurveAffine, CurveExt};
 
+use rustversion;
+
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
 /// generically over either a field or elliptic curve group.
@@ -344,7 +346,12 @@ pub fn parallelize_count<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(
     });
 }
 
-#[deprecated(note = "use `https://doc.rust-lang.org/std/primitive.usize.html#method.ilog2")]
+#[rustversion::since(1.67)]
+pub fn log2_floor(num: usize) -> u32 {
+    num.ilog2()
+}
+
+#[rustversion::before(1.67)]
 /// Compute the binary logarithm floored.
 pub fn log2_floor(num: usize) -> u32 {
     assert!(num > 0);

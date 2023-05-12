@@ -14,6 +14,25 @@ use group::{
 
 pub use halo2curves::{CurveAffine, CurveExt};
 
+use rustversion;
+use std::mem::size_of;
+
+#[rustversion::since(1.37)]
+#[allow(unused_mut)]
+fn bitreverse(mut n: usize, l: usize) -> usize {
+    n.reverse_bits() >> (size_of::<usize>() - l)
+}
+
+#[rustversion::before(1.37)]
+fn bitreverse(mut n: usize, l: usize) -> usize {
+    let mut r = 0;
+    for _ in 0..l {
+        r = (r << 1) | (n & 1);
+        n >>= 1;
+    }
+    r
+}
+
 /// Performs a radix-$2$ Fast-Fourier Transformation (FFT) on a vector of size
 /// $n = 2^k$, when provided `log_n` = $k$ and an element of multiplicative
 /// order $n$ called `omega` ($\omega$). The result is that the vector `a`, when
@@ -25,18 +44,6 @@ pub use halo2curves::{CurveAffine, CurveExt};
 ///
 /// This will use multithreading if beneficial.
 pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
-    #[deprecated(
-        note = "use `https://doc.rust-lang.org/std/primitive.usize.html#method.reverse_bits`"
-    )]
-    fn bitreverse(mut n: usize, l: usize) -> usize {
-        let mut r = 0;
-        for _ in 0..l {
-            r = (r << 1) | (n & 1);
-            n >>= 1;
-        }
-        r
-    }
-
     let threads = multicore::current_num_threads();
     let log_threads = log2_floor(threads);
     let n = a.len() as usize;

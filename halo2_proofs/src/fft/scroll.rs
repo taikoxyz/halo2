@@ -10,7 +10,6 @@ use group::{
     Curve, Group as _, GroupOpsOwned, ScalarMulOwned,
 };
 pub use halo2curves::{CurveAffine, CurveExt};
-use rustversion;
 use std::time::Instant;
 
 /// A constant

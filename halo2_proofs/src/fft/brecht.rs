@@ -14,8 +14,6 @@ use group::{
 
 pub use halo2curves::{CurveAffine, CurveExt};
 
-use rustversion;
-
 #[rustversion::since(1.37)]
 #[allow(unused_mut)]
 fn bitreverse(mut n: usize, l: usize) -> usize {

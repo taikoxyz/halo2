@@ -10,6 +10,7 @@ use group::{
     Curve, Group as _, GroupOpsOwned, ScalarMulOwned,
 };
 pub use halo2curves::{CurveAffine, CurveExt};
+use rustversion;
 use std::time::Instant;
 
 /// A constant
@@ -145,6 +146,13 @@ pub fn recursive_butterfly_arithmetic<Scalar: Field, G: FftGroup<Scalar>>(
     }
 }
 
+#[rustversion::since(1.37)]
+#[allow(unused_mut)]
+fn bitreverse(mut n: usize, l: usize) -> usize {
+    n.reverse_bits() >> (std::mem::size_of::<usize>() - l)
+}
+
+#[rustversion::before(1.37)]
 fn bitreverse(mut n: usize, l: usize) -> usize {
     let mut r = 0;
     for _ in 0..l {

@@ -15,12 +15,11 @@ use group::{
 pub use halo2curves::{CurveAffine, CurveExt};
 
 use rustversion;
-use std::mem::size_of;
 
 #[rustversion::since(1.37)]
 #[allow(unused_mut)]
 fn bitreverse(mut n: usize, l: usize) -> usize {
-    n.reverse_bits() >> (size_of::<usize>() - l)
+    n.reverse_bits() >> (std::mem::size_of::<usize>() - l)
 }
 
 #[rustversion::before(1.37)]

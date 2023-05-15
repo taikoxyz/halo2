@@ -1,20 +1,17 @@
 //! This is a meta module for swapping different FFT implementations.
 
-use std::env;
+use std::{env, mem};
 
 pub use ff::Field;
 use ff::PrimeField;
 use group::{ff::BatchInvert, Curve, Group, GroupOpsOwned, ScalarMulOwned};
 
-use crate::fft::brecht;
-use crate::fft::scroll;
 pub use crate::fft::scroll::best_fft_opt;
+use crate::fft::{brecht, scroll};
 
 use crate::multicore;
 
 pub use halo2curves::{CurveAffine, CurveExt};
-
-use rustversion;
 
 /// This represents an element of a group with basic operations that can be
 /// performed. This allows an FFT implementation (for example) to operate
@@ -434,6 +431,26 @@ pub(crate) fn evaluate_vanishing_polynomial<F: Field>(roots: &[F], z: F) -> F {
 
 pub(crate) fn powers<F: Field>(base: F) -> impl Iterator<Item = F> {
     std::iter::successors(Some(F::ONE), move |power| Some(base * power))
+}
+
+#[rustversion::since(1.37)]
+#[allow(unused_mut)]
+/// Reverse `l` LSBs of bitvector `n`
+pub fn bitreverse(mut n: usize, l: usize) -> usize {
+    // 1 Byte = 8 bits = 2^3 bits equal to leftshift by 3.
+    let unused_bits_count = (mem::size_of::<usize>() << 3) - l;
+    n.reverse_bits() >> unused_bits_count
+}
+
+#[rustversion::before(1.37)]
+/// Reverse `l` LSBs of bitvector `n`
+pub fn bitreverse(mut n: usize, l: usize) -> usize {
+    let mut r = 0;
+    for _ in 0..l {
+        r = (r << 1) | (n & 1);
+        n >>= 1;
+    }
+    r
 }
 
 #[cfg(test)]

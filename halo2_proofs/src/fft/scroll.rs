@@ -1,7 +1,7 @@
 //! This module provides common utilities, traits and structures for group,
 //! field and polynomial arithmetic.
 
-use crate::arithmetic::{log2_floor, FftGroup};
+use crate::arithmetic::{self, bitreverse, log2_floor, FftGroup};
 
 use crate::multicore;
 pub use ff::Field;
@@ -145,28 +145,12 @@ pub fn recursive_butterfly_arithmetic<Scalar: Field, G: FftGroup<Scalar>>(
     }
 }
 
-#[rustversion::since(1.37)]
-#[allow(unused_mut)]
-fn bitreverse(mut n: usize, l: usize) -> usize {
-    n.reverse_bits() >> (std::mem::size_of::<usize>() - l)
-}
-
-#[rustversion::before(1.37)]
-fn bitreverse(mut n: usize, l: usize) -> usize {
-    let mut r = 0;
-    for _ in 0..l {
-        r = (r << 1) | (n & 1);
-        n >>= 1;
-    }
-    r
-}
-
 fn serial_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
     let n = a.len() as u32;
     assert_eq!(n, 1 << log_n);
 
     for k in 0..n as usize {
-        let rk = bitreverse(k, log_n as usize);
+        let rk = arithmetic::bitreverse(k, log_n as usize);
         if k < rk {
             a.swap(rk as usize, k as usize);
         }
@@ -249,7 +233,7 @@ fn split_radix_fft<Scalar: Field, G: FftGroup<Scalar>>(
     let tmp_filler_val = tmp[0];
     let mut t1 = vec![tmp_filler_val; split_m];
     for i in 0..split_m {
-        t1[bitreverse(i, log_split)] = a[(i * sub_n + sub_fft_offset)];
+        t1[arithmetic::bitreverse(i, log_split)] = a[(i * sub_n + sub_fft_offset)];
     }
     serial_split_fft(&mut t1, twiddle_lut, sub_n, log_split as u32);
 

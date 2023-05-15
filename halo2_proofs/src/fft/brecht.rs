@@ -18,22 +18,6 @@ use group::{
 
 pub use halo2curves::{CurveAffine, CurveExt};
 
-#[rustversion::since(1.37)]
-#[allow(unused_mut)]
-fn bitreverse(mut n: usize, l: usize) -> usize {
-    n.reverse_bits() >> (std::mem::size_of::<usize>() - l)
-}
-
-#[rustversion::before(1.37)]
-fn bitreverse(mut n: usize, l: usize) -> usize {
-    let mut r = 0;
-    for _ in 0..l {
-        r = (r << 1) | (n & 1);
-        n >>= 1;
-    }
-    r
-}
-
 /// Performs a radix-$2$ Fast-Fourier Transformation (FFT) on a vector of size
 /// $n = 2^k$, when provided `log_n` = $k$ and an element of multiplicative
 /// order $n$ called `omega` ($\omega$). The result is that the vector `a`, when
@@ -51,7 +35,7 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
     assert_eq!(n, 1 << log_n);
 
     for k in 0..n {
-        let rk = bitreverse(k, log_n as usize);
+        let rk = arithmetic::bitreverse(k, log_n as usize);
         if k < rk {
             a.swap(rk, k);
         }

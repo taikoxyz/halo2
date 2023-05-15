@@ -2,7 +2,7 @@
 //! domain that is of a suitable size for the application.
 
 use crate::{
-    arithmetic::{self, best_fft, parallelize, parallelize_count},
+    arithmetic::{self, best_fft, parallelize},
     fft::{
         brecht::{self, FFTData},
         get_fft_mode,
@@ -264,7 +264,13 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
-        best_fft(&mut a.values, self.extended_omega, self.extended_k);
+        best_fft(
+            &mut a.values,
+            self.extended_omega,
+            self.extended_k,
+            &FFTData::default(),
+            false,
+        );
 
         Polynomial {
             values: a.to_vec(),
@@ -389,7 +395,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             };
             brecht::recursive_fft(fft_data, a, inverse);
         } else {
-            best_fft(a, omega, log_n);
+            // TODO
+            best_fft(a, omega, log_n, &FFTData::default(), false);
         }
         let duration = get_duration(start);
 
@@ -534,8 +541,11 @@ mod tests {
     use ff::Field;
 
     use crate::{
-        arithmetic::{best_fft, best_fft_opt},
-        fft::brecht,
+        arithmetic::best_fft,
+        fft::{
+            self,
+            brecht::{self, FFTData},
+        },
         multicore,
         plonk::{start_measure, stop_measure},
         poly::{EvaluationDomain, Rotation},
@@ -614,38 +624,41 @@ mod tests {
 
     #[test]
     fn test_fft_scroll() {
-        use halo2curves::bn256::Fr as Scalar;
+        use halo2curves::pasta::pallas::Scalar;
 
-        let max_log_n = 28;
+        let max_log_n = 22;
         let min_log_n = 8;
         let a = (0..(1 << max_log_n))
             .into_iter()
             .map(|i| Scalar::from(i as u64))
             .collect::<Vec<_>>();
 
-        println!("\n----------test FFT---------");
+        println!("\n---------- scroll/test_fft ---------");
         for log_n in min_log_n..=max_log_n {
             let domain = EvaluationDomain::<Scalar>::new(1, log_n);
             let mut a0 = a[0..(1 << log_n)].to_vec();
             let mut a1 = a0.clone();
 
+            let d = &FFTData::default();
+            let f = false;
+
             // warm up & correct test
-            best_fft(&mut a0, domain.omega, log_n);
-            best_fft_opt(&mut a1, domain.omega, log_n);
+            fft::orig::fft(&mut a0, domain.omega, log_n, d, f);
+            fft::scroll::fft(&mut a1, domain.omega, log_n, d, f);
             assert_eq!(a0, a1);
 
             let ori_time = Instant::now();
-            best_fft(&mut a0, domain.omega, log_n);
+            fft::orig::fft(&mut a0, domain.omega, log_n, d, f);
             let ori_time = ori_time.elapsed();
             let ori_micros = f64::from(ori_time.as_micros() as u32);
 
             let opt_time = Instant::now();
-            best_fft_opt(&mut a1, domain.omega, log_n);
+            fft::scroll::fft(&mut a1, domain.omega, log_n, d, f);
             let opt_time = opt_time.elapsed();
             let opt_micros = f64::from(opt_time.as_micros() as u32);
 
             println!(
-                "    [log_n = {}] ori_time: {:?}, opt_time: {:?}, speedup: {}",
+                "    [log_n = {}] orig::fft time: {:?}, scroll::fft time: {:?}, speedup: {}",
                 log_n,
                 ori_time,
                 opt_time,
@@ -660,28 +673,20 @@ mod tests {
         use halo2curves::pasta::pallas::Scalar;
         use rand_core::OsRng;
 
-        fn get_degree() -> usize {
-            env::var("DEGREE")
-                .unwrap_or_else(|_| "8".to_string())
-                .parse()
-                .expect("Cannot parse DEGREE env var as usize")
-        }
-        let k = get_degree() as u32;
+        println!("\n---------- brecht/test_fft ---------");
+
+        let k = fft::get_degree() as u32;
 
         let domain = EvaluationDomain::<Scalar>::new(1, k);
         let n = domain.n as usize;
 
         let input = vec![Scalar::random(OsRng); n];
-        /*let mut input = vec![Scalar::ZERO; n];
-        for i in 0..n {
-            input[i] = Scalar::random(OsRng);
-        }*/
 
         let num_threads = multicore::current_num_threads();
 
         let mut a = input.clone();
         let start = start_measure(format!("best fft {} ({})", a.len(), num_threads), false);
-        best_fft(&mut a, domain.omega, k);
+        fft::orig::fft(&mut a, domain.omega, k, &domain.fft_data, false);
         stop_measure(start);
 
         let mut b = input;
@@ -689,7 +694,7 @@ mod tests {
             format!("recursive fft {} ({})", a.len(), num_threads),
             false,
         );
-        brecht::recursive_fft(&domain.fft_data, &mut b, false);
+        fft::brecht::fft(&mut b, domain.omega, k, &domain.fft_data, false);
         stop_measure(start);
 
         for i in 0..n {
@@ -700,7 +705,7 @@ mod tests {
 
     #[test]
     fn test_fft() {
-        //test_fft_scroll();
+        test_fft_scroll();
         test_fft_brecht()
     }
 }

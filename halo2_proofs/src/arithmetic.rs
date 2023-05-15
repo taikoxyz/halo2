@@ -6,8 +6,10 @@ pub use ff::Field;
 use ff::PrimeField;
 use group::{ff::BatchInvert, Curve, Group, GroupOpsOwned, ScalarMulOwned};
 
-pub use crate::fft::scroll::best_fft_opt;
-use crate::fft::{brecht, scroll};
+use crate::fft::{
+    brecht::{self, FFTData},
+    scroll,
+};
 
 use crate::multicore;
 
@@ -191,8 +193,14 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 }
 
 /// Dispatcher
-pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
-    crate::fft::dispatch(a, omega, log_n);
+pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(
+    a: &mut [G],
+    omega: Scalar,
+    log_n: u32,
+    data: &FFTData<Scalar>,
+    inverse: bool,
+) {
+    crate::fft::dispatch(a, omega, log_n, data, inverse);
 }
 
 /// Convert coefficient bases group elements to lagrange basis by inverse FFT.
@@ -204,7 +212,13 @@ pub fn g_to_lagrange<C: CurveAffine>(g_projective: Vec<C::Curve>, k: u32) -> Vec
     }
 
     let mut g_lagrange_projective = g_projective;
-    best_fft(&mut g_lagrange_projective, omega_inv, k);
+    best_fft(
+        &mut g_lagrange_projective,
+        omega_inv,
+        k,
+        &FFTData::<C::Scalar>::default(),
+        false,
+    );
     parallelize(&mut g_lagrange_projective, |g, _| {
         for g in g.iter_mut() {
             *g *= n_inv;
@@ -304,29 +318,6 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
             scope.spawn(move |_| {
                 let start = chunk_num * chunk;
                 f(v, start);
-            });
-        }
-    });
-}
-
-/// This simple utility function will parallelize an operation that is to be
-/// performed over a mutable slice.
-pub fn parallelize_count<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(
-    v: &mut [T],
-    num_threads: usize,
-    f: F,
-) {
-    let n = v.len();
-    let mut chunk = (n as usize) / num_threads;
-    if chunk < num_threads {
-        chunk = n as usize;
-    }
-
-    multicore::scope(|scope| {
-        for (chunk_num, v) in v.chunks_mut(chunk).enumerate() {
-            let f = f.clone();
-            scope.spawn(move |_| {
-                f(v, chunk_num);
             });
         }
     });

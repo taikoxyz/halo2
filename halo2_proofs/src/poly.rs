@@ -17,8 +17,8 @@ use std::ops::{Add, Deref, DerefMut, Index, IndexMut, Mul, RangeFrom, RangeFull,
 /// Generic commitment scheme structures
 pub mod commitment;
 mod domain;
-//mod domain_brecht;
 mod domain_scroll;
+// mod domain_brecht;
 mod query;
 mod strategy;
 
@@ -149,7 +149,7 @@ impl<F, B> Polynomial<F, B> {
 }
 
 impl<F: SerdePrimeField, B> Polynomial<F, B> {
-    /// Reads polynomial from buffer using `SerdePrimeField::read`.  
+    /// Reads polynomial from buffer using `SerdePrimeField::read`.
     pub(crate) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let mut poly_len = [0u8; 4];
         reader.read_exact(&mut poly_len)?;
@@ -164,7 +164,7 @@ impl<F: SerdePrimeField, B> Polynomial<F, B> {
             })
     }
 
-    /// Writes polynomial to buffer using `SerdePrimeField::write`.  
+    /// Writes polynomial to buffer using `SerdePrimeField::write`.
     pub(crate) fn write<W: io::Write>(
         &self,
         writer: &mut W,

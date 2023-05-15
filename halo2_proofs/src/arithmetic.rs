@@ -195,18 +195,7 @@ pub fn best_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Cu
 
 /// Dispatcher
 pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
-    match env::var("FFT") {
-        Ok(fft_impl) if fft_impl == "brecht" => {
-            println!("=== brechtFFT ===");
-            brecht::best_fft(a, omega, log_n)
-        }
-        Ok(fft_impl) if fft_impl == "scroll" => {
-            println!("=== scrollFFT ===");
-            scroll::best_fft(a, omega, log_n)
-        }
-        Ok(fft_impl) => panic!("Unknown FFT implementation {fft_impl}"),
-        _ => panic!("Please specify environment variable FFT"),
-    }
+    crate::fft::dispatch(a, omega, log_n);
 }
 
 /// Convert coefficient bases group elements to lagrange basis by inverse FFT.

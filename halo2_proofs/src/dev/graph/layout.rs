@@ -123,6 +123,34 @@ impl CircuitLayout {
         self
     }
 
+    // fn draw_and_label_cells(
+    //     labels: &mut Vec<(Text<(i32, i32), String>, (usize, usize))>, 
+    //     cells: HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>
+    // ) {
+    //     for ((column, row), (annotation, value)) in cells {
+    //         draw_cell(&root, column_index(&cs, column), row).unwrap();
+    //         match annotation {
+    //             Some(annotation) if self.show_cell_annotations => {
+    //                 labels.push((
+    //                     Text::new(annotation.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+    //                     (column_index(&cs, column), row))
+    //                 );
+    //             },
+    //             _ => (),
+    //         };
+    //         match value {
+    //             Some(value) if self.show_cell_assignments => {
+    //                 labels.push((
+    //                     Text::new(format!("{}", value), (10, 10), ("sans-serif", 15.0).into_font()),
+    //                     (column_index(&cs, column), row))
+    //                 );
+    //             },
+    //             _ => (),
+    //         };
+    //     }
+    // };
+
+
     /// Renders the given circuit on the given drawing area.
     pub fn render<F: Field, ConcreteCircuit: Circuit<F>, DB: DrawingBackend>(
         self,
@@ -481,6 +509,18 @@ impl<AF> Layout<AF> {
             /// Selector assignments used for optimization pass
             selectors: vec![vec![false; n]; num_selectors],
         }
+    }
+
+    fn get_regions_by_name(&self, name: &str) -> Vec<usize> {
+        self.regions.iter()
+            .enumerate()
+            .filter(|(i, r)| r.name == name)
+            .map(|(i, r)| i)
+            .collect()
+    }
+
+    fn get_region_by_idx(&self, idx: usize) -> Option<&Region<AF>> {
+        self.regions.get(idx)
     }
 
     fn has_column(&self, column: RegionColumn) -> bool {

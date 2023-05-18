@@ -3,7 +3,9 @@ use plotters::{
     coord::Shift,
     prelude::{DrawingArea, DrawingAreaErrorKind, DrawingBackend},
 };
-use std::{cmp, println, collections::HashMap, format};
+use sha3::digest::generic_array::typenum::SquareRoot;
+use core::panic;
+use std::{cmp, println, collections::HashMap, format, fmt::{Debug, self}};
 use std::collections::HashSet;
 use std::ops::Range;
 
@@ -14,6 +16,9 @@ use crate::{
         Fixed, FloorPlanner, Instance, Selector,
     },
 };
+
+use plotters::coord::types::RangedCoordusize;
+use plotters::prelude::*;
 
 /// Graphical renderer for circuit layouts.
 ///
@@ -38,8 +43,8 @@ use crate::{
 /// let k = 5; // Suitable size for MyCircuit
 /// CircuitLayout::default().render(k, &circuit, &drawing_area).unwrap();
 /// ```
-#[derive(Debug, Default)]
-pub struct CircuitLayout {
+#[derive(Default)]
+pub struct CircuitLayout<DB: DrawingBackend, F: Field> {
 
     hide_labels: bool,
     show_region_names: bool,
@@ -54,9 +59,23 @@ pub struct CircuitLayout {
 
     target_region_name: Option<String>,
     target_region_idx: Option<usize>,
+
+    root: Option<DrawingArea<DB, Cartesian2d::<RangedCoordusize, RangedCoordusize>>>,
+    cs: Option<ConstraintSystem<F>>,
 }
 
-impl CircuitLayout {
+impl<DB: DrawingBackend, F: Field> Debug for CircuitLayout<DB, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CircuitLayout")
+            .field("view_width", &self.view_width)
+            .field("view_height", &self.view_height)
+            .field("target_region_name", &self.target_region_name)
+            .field("target_region_idx", &self.target_region_idx)
+            .finish()
+    }
+}
+
+impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
     /// Sets the visibility of region labels.
     ///
     /// The default is to show labels.
@@ -123,43 +142,352 @@ impl CircuitLayout {
         self
     }
 
-    // fn draw_and_label_cells(
-    //     labels: &mut Vec<(Text<(i32, i32), String>, (usize, usize))>, 
-    //     cells: HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>
-    // ) {
-    //     for ((column, row), (annotation, value)) in cells {
-    //         draw_cell(&root, column_index(&cs, column), row).unwrap();
-    //         match annotation {
-    //             Some(annotation) if self.show_cell_annotations => {
-    //                 labels.push((
-    //                     Text::new(annotation.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
-    //                     (column_index(&cs, column), row))
-    //                 );
-    //             },
-    //             _ => (),
-    //         };
-    //         match value {
-    //             Some(value) if self.show_cell_assignments => {
-    //                 labels.push((
-    //                     Text::new(format!("{}", value), (10, 10), ("sans-serif", 15.0).into_font()),
-    //                     (column_index(&cs, column), row))
-    //                 );
-    //             },
-    //             _ => (),
-    //         };
-    //     }
-    // };
+    fn apply_drawing_area(
+        &mut self, 
+        drawing_area: &DrawingArea<DB, Shift>,
+        width: Range<usize>, 
+        height: Range<usize>
+    ) {
+        match (self.view_width.as_ref(), self.view_height.as_ref()) {
+            (Some(w), Some(h)) => {
+                self.root = Some(drawing_area
+                    .apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
+                        w.clone(),
+                        h.clone(),
+                        drawing_area.get_pixel_range(),
+                    ))
+                );
+            },
+            (Some(w), None) => {
+                self.view_height = Some(height.clone());
+                self.root = Some(drawing_area
+                    .apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
+                        w.clone(),
+                        height,
+                        drawing_area.get_pixel_range(),
+                    ))
+                );
+            },
+            (None, Some(h)) => {
+                self.view_width = Some(width.clone());
+                self.root = Some(drawing_area
+                    .apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
+                        width,
+                        h.clone(),
+                        drawing_area.get_pixel_range(),
+                    ))
+                );
+            },
+            (None, None) => {
+                self.view_width = Some(width.clone());
+                self.view_height = Some(height.clone());
+                self.root = Some(drawing_area
+                    .apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
+                        width,
+                        height,
+                        drawing_area.get_pixel_range(),
+                    ))
+                );
+            },
+        };
+    }
 
+    fn column_index(&self, column: &RegionColumn) -> usize {
+        if let Some(cs) = &self.cs {
+            let column = match column {
+                RegionColumn::Column(col) => col.clone(),
+                RegionColumn::Selector(selector) => cs.selector_map[selector.0].into(),
+            };
+            column.index()
+                + match column.column_type() {
+                    Any::Instance => 0,
+                    Any::Advice(_) => cs.num_instance_columns,
+                    Any::Fixed => cs.num_instance_columns + cs.num_advice_columns,
+                }
+        } else {
+            panic!("Constraint system not set")
+        }
+    }
+
+    fn draw_and_label_cells(
+        &self,
+        cells: HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>
+    )  -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
+        let mut labels: Vec<(Text<(i32, i32), String>, (usize, usize))> = Vec::new();
+        for ((column, row), (annotation, value)) in cells {
+            let col_idx = self.column_index(&column);
+            if let Some(root) = &self.root {
+                root.draw(&Rectangle::new(
+                    [(col_idx, row), (col_idx + 1, row + 1)],
+                    ShapeStyle::from(&BLACK.mix(0.1)).filled(),
+                ))?;
+            }
+            match annotation {
+                Some(annotation) if self.show_cell_annotations => {
+                    labels.push((
+                        Text::new(annotation.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                        (col_idx, row))
+                    );
+                },
+                _ => (),
+            };
+            match value {
+                Some(value) if self.show_cell_assignments => {
+                    labels.push((
+                        Text::new(format!("{}", value), (10, 10), ("sans-serif", 15.0).into_font()),
+                        (col_idx, row))
+                    );
+                },
+                _ => (),
+            };
+        }
+        self.draw_labels(labels)?;
+        Ok(())
+    }
+
+    fn region_area(&self, region: &Region<Assigned<F>>) -> (Range<usize>, Range<usize>) {
+        let start = self.column_index(region.columns.keys().collect::<Vec<_>>()[0]);
+        let (left, right) = region.columns.iter()
+            .fold((start, start + 1), |(start, end), (c, _)| 
+                {
+                    let c_idx = self.column_index(c);
+                    (
+                        cmp::min(start, c_idx),
+                        cmp::max(end, c_idx + 1)
+                    )
+                }
+            );
+        (left..right, region.offset.unwrap_or(0)..region.rows)
+    }
+
+    fn draw_region(
+        &self,
+        region: &Region<Assigned<F>>
+    ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
+        let mut labels = Vec::new();
+
+        let draw_region = |top_left:(usize, usize), bottom_right: (usize, usize)| {
+            if let Some(root) = &self.root {
+                root.draw(&Rectangle::new(
+                    [top_left, bottom_right],
+                    ShapeStyle::from(&WHITE).filled(),
+                ))?;
+                root.draw(&Rectangle::new(
+                    [top_left, bottom_right],
+                    ShapeStyle::from(&RED.mix(0.2)).filled(),
+                ))?;
+                root.draw(&Rectangle::new(
+                    [top_left, bottom_right],
+                    ShapeStyle::from(&GREEN.mix(0.2)).filled(),
+                ))?;
+                root.draw(&Rectangle::new([top_left, bottom_right], &BLACK))?;
+            } else {
+                panic!("No root set");
+            }
+            Ok(())
+        };
+        let offset = region.offset.unwrap_or(0);
+        // Sort the region's columns according to the defined ordering.
+        let mut columns = region.columns.keys().cloned().collect::<Vec<_>>();
+        columns.sort_unstable_by_key(|a| self.column_index(a));
+
+        // Render contiguous parts of the same region as a single box.
+        let mut width = None;
+        for column in columns {
+            let idx: usize = self.column_index(&column);
+            if self.show_column_names {
+                if let Some(name) = region.columns.get(&column).unwrap() {
+                    // Columns
+                    labels.push((
+                        Text::new(name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                        (idx, offset))
+                    );
+                }
+            }
+            match width {
+                Some((start, end)) if end == idx => width = Some((start, end + 1)),
+                Some((start, end)) => {
+                    draw_region( (start, offset), (end, offset + region.rows))?;
+                    if self.show_region_names {
+                        labels.push((
+                            Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                            (start, offset))
+                        );
+                    }
+                    width = Some((idx, idx + 1));
+                }
+                None => width = Some((idx, idx + 1)),
+            }
+        }
+
+        // Render the last part of the region.
+        if let Some((start, end)) = width {
+            draw_region((start, offset), (end, offset + region.rows))?;
+            if self.show_column_names {
+                labels.push((
+                    Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                    (start, offset))
+                );
+            }
+        }
+        self.draw_labels(labels)?;
+        Ok(())
+    }
+
+    fn draw_labels(
+        &self, 
+        labels: Vec<(Text<(i32, i32), String>, (usize, usize))>
+    ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
+        // Render labels last, on top of everything else.
+        if !self.hide_labels {
+            for (label, top_left) in labels {
+                self.root.as_ref().unwrap().draw(&(EmptyElement::at(top_left) + label))?;
+            }
+        }
+        Ok(())
+    }
+
+    fn draw_circuit(
+        &self, 
+        layout: Layout<Assigned<F>>,
+        column_ranges: (usize, usize, usize, usize),
+    ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
+
+        let view_bottom = self.view_height.as_ref().unwrap().end;
+        let total_columns = self.view_width.as_ref().unwrap().end;
+
+        if let Some(root) = &self.root {
+            // All Cols & Rows
+            root.draw(&Rectangle::new(
+                [(0, 0), (total_columns, view_bottom)],
+                ShapeStyle::from(&WHITE).filled(),
+            ))?;
+            // Advice - Red
+            root.draw(&Rectangle::new(
+                [
+                    (column_ranges.0, 0),
+                    (column_ranges.1, view_bottom),
+                ],
+                ShapeStyle::from(&RED.mix(0.2)).filled(),
+            ))?;
+            // Fixed - Blue
+            root.draw(&Rectangle::new(
+                [
+                    (column_ranges.1, 0),
+                    (column_ranges.2, view_bottom)
+                ],
+                ShapeStyle::from(&BLUE.mix(0.2)).filled(),
+            ))?;
+            // Selector - Dark Blue
+            {
+                root.draw(&Rectangle::new(
+                    [
+                        (column_ranges.2, 0),
+                        (column_ranges.3, view_bottom),
+                    ],
+                    ShapeStyle::from(&YELLOW.mix(0.1)).filled(),
+                ))?;
+            }
+            let usable_rows = view_bottom - (self.cs.as_ref().unwrap().blinding_factors() + 1);
+            if view_bottom > usable_rows {
+                root.draw(&Rectangle::new(
+                    [(0, usable_rows), (total_columns, view_bottom)],
+                    ShapeStyle::from(&RED.mix(0.4)).filled(),
+                ))?;
+            }
+            root.draw(&Rectangle::new(
+                [(0, 0), (total_columns, view_bottom)],
+                &BLACK,
+            ))?;
+            
+            // Render the regions!
+            for region in &layout.regions {
+                self.draw_region(region)?;
+            }
+
+            // Darken the cells of the region that have been assigned to.
+            for region in layout.regions {
+                self.draw_and_label_cells(region.cells);
+            }
+            self.draw_and_label_cells(layout.loose_cells);
+
+
+            // Mark equality-constrained cells.
+            if self.mark_equality_cells {
+                let mut cells = HashSet::new();
+                for (l_col, l_row, r_col, r_row) in &layout.equality {
+                    let l_col = self.column_index(&(*l_col).into());
+                    let r_col = self.column_index(&(*r_col).into());
+
+                    // Deduplicate cells.
+                    cells.insert((l_col, *l_row));
+                    cells.insert((r_col, *r_row));
+                }
+
+                for (col, row) in cells {
+                    root.draw(&Rectangle::new(
+                        [(col, row), (col + 1, row + 1)],
+                        ShapeStyle::from(&RED.mix(0.5)).filled(),
+                    ))?;
+                }
+            }
+
+            // Draw lines between equality-constrained cells.
+            if self.show_equality_constraints {
+                for (l_col, l_row, r_col, r_row) in &layout.equality {
+                    let l_col = self.column_index(&(*l_col).into());
+                    let r_col = self.column_index(&(*r_col).into());
+                    root.draw(&PathElement::new(
+                        [(l_col, *l_row), (r_col, *r_row)],
+                        ShapeStyle::from(&RED),
+                    ))?;
+                }
+            }
+
+            // Add a line showing the total used rows.
+            root.draw(&PathElement::new(
+                [(0, layout.total_rows), (total_columns, layout.total_rows)],
+                ShapeStyle::from(&BLACK),
+            ))?;
+
+            root.draw_mesh(
+                |b, l| {
+                    l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
+                }, 
+                view_bottom, 
+                total_columns
+            )?;
+
+            // Render labels last, on top of everything else.
+            if !self.hide_labels {
+                root.draw(
+                    &(EmptyElement::at((0, layout.total_rows))
+                        + Text::new(
+                            format!("{} used rows", layout.total_rows),
+                            (10, 10),
+                            ("sans-serif", 15.0).into_font(),
+                        )),
+                )?;
+                root.draw(
+                    &(EmptyElement::at((0, usable_rows))
+                        + Text::new(
+                            format!("{} usable rows", usable_rows),
+                            (10, 10),
+                            ("sans-serif", 15.0).into_font(),
+                        )),
+                )?;
+            }
+        }
+        Ok(())
+    }
 
     /// Renders the given circuit on the given drawing area.
-    pub fn render<F: Field, ConcreteCircuit: Circuit<F>, DB: DrawingBackend>(
-        self,
+    pub fn render<ConcreteCircuit: Circuit<F>>(
+        mut self,
         k: u32,
         circuit: &ConcreteCircuit,
         drawing_area: &DrawingArea<DB, Shift>,
     ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
-        use plotters::coord::types::RangedCoordusize;
-        use plotters::prelude::*;
 
         let n = 1 << k;
         // Collect the layout details.
@@ -176,289 +504,49 @@ impl CircuitLayout {
 
         println!("\nDone synthesize. \n{:?}", layout.regions[0].columns);
     
-        let (cs, selector_polys) = cs.compress_selectors(layout.selectors);
-        let non_selector_fixed_columns = cs.num_fixed_columns - selector_polys.len();
-
- 
-        println!("\nConstraintSystem: total_fixed {:?} = fixed {:?} + selector {:?}, advice {:?}, instance {:?}", 
-            cs.num_fixed_columns,
-            non_selector_fixed_columns,
-            selector_polys.len(),
-            cs.num_advice_columns,
-            cs.num_instance_columns
-        );
-
-        // Figure out what order to render the columns in.
-        // TODO: For now, just render them in the order they were configured.
-        let total_columns = cs.num_instance_columns + cs.num_advice_columns + cs.num_fixed_columns;
-        let column_index = |cs: &ConstraintSystem<F>, column: RegionColumn| {
-            let column: Column<Any> = match column {
-                RegionColumn::Column(col) => col,
-                RegionColumn::Selector(selector) => cs.selector_map[selector.0].into(),
-            };
-            column.index()
-                + match column.column_type() {
-                    Any::Instance => 0,
-                    Any::Advice(_) => cs.num_instance_columns,
-                    Any::Fixed => cs.num_instance_columns + cs.num_advice_columns,
-                }
-        };
-
-        let view_width = self.view_width.unwrap_or(0..total_columns);
-        let view_height = self.view_height.unwrap_or(0..n);
-        let view_bottom = view_height.end;
-
-        println!("view_width {:?}, view_height {:?}", 
-            view_width, view_height
-        );
+        let (cs, selector_polys) = cs.compress_selectors(layout.selectors.clone());
+        self.cs = Some(cs.clone());
 
         // ================================
 
+        // Draw specific region
 
-        // Prepare the grid layout. We render a red background for advice columns, white for
-        // instance columns, and blue for fixed columns (with a darker blue for selectors).
-        let root =
-            drawing_area.apply_coord_spec(Cartesian2d::<RangedCoordusize, RangedCoordusize>::new(
-                view_width,
-                view_height,
-                drawing_area.get_pixel_range(),
-            ));
-
-        // All Cols & Rows
-        root.draw(&Rectangle::new(
-            [(0, 0), (total_columns, view_bottom)],
-            ShapeStyle::from(&WHITE).filled(),
-        ))?;
-
-        // Advice - Red
-        root.draw(&Rectangle::new(
-            [
-                (cs.num_instance_columns, 0),
-                (cs.num_instance_columns + cs.num_advice_columns, view_bottom),
-            ],
-            ShapeStyle::from(&RED.mix(0.2)).filled(),
-        ))?;
-
-        // Fixed - Blue
-        root.draw(&Rectangle::new(
-            [
-                (cs.num_instance_columns + cs.num_advice_columns, 0),
-                (
-                    cs.num_instance_columns
-                        + cs.num_advice_columns
-                        + non_selector_fixed_columns,
-                    view_bottom,
-                ),
-            ],
-            ShapeStyle::from(&BLUE.mix(0.2)).filled(),
-        ))?;
         
-        // Selector - Dark Blue
-        {
-            root.draw(&Rectangle::new(
-                [
-                    (
-                        cs.num_instance_columns
-                            + cs.num_advice_columns
-                            + non_selector_fixed_columns,
-                        0,
-                    ),
-                    (total_columns, view_bottom),
-                ],
-                ShapeStyle::from(&YELLOW.mix(0.1)).filled(),
-            ))?;
+        if let Some(r) = self.target_region_idx {
+            let region = layout.regions
+                .get(r)
+                .expect("region does not exists");
+            let (width, height) = self.region_area(region);
+            self.apply_drawing_area(drawing_area, width, height);
+            self.draw_region(region)?;
+            return Ok(());
+        } 
+        if let Some(s) = &self.target_region_name {
+            let r = layout.get_regions_by_name(s).expect("region does not exists");
+            let region = &layout.regions[r];
+            let (width, height) = self.region_area(region);
+            self.apply_drawing_area(drawing_area, width, height);
+            self.draw_region(region)?;
+            return Ok(());
         }
 
-        // Mark the unusable rows of the circuit.
-        let usable_rows = n - (cs.blinding_factors() + 1);
-        if view_bottom > usable_rows {
-            root.draw(&Rectangle::new(
-                [(0, usable_rows), (total_columns, view_bottom)],
-                ShapeStyle::from(&RED.mix(0.4)).filled(),
-            ))?;
-        }
+        // ================================
+        // Figure out what order to render the columns in.
+        // TODO: For now, just render them in the order they were configured.
 
-        root.draw(&Rectangle::new(
-            [(0, 0), (total_columns, view_bottom)],
-            &BLACK,
-        ))?;
-
-        let draw_region = |root: &DrawingArea<_, _>, top_left, bottom_right| {
-            root.draw(&Rectangle::new(
-                [top_left, bottom_right],
-                ShapeStyle::from(&WHITE).filled(),
-            ))?;
-            root.draw(&Rectangle::new(
-                [top_left, bottom_right],
-                ShapeStyle::from(&RED.mix(0.2)).filled(),
-            ))?;
-            root.draw(&Rectangle::new(
-                [top_left, bottom_right],
-                ShapeStyle::from(&GREEN.mix(0.2)).filled(),
-            ))?;
-            root.draw(&Rectangle::new([top_left, bottom_right], &BLACK))?;
-            Ok(())
-        };
+        let total_columns = cs.num_instance_columns + cs.num_advice_columns + cs.num_fixed_columns;
+        self.apply_drawing_area(drawing_area, 0..total_columns, 0..n);
         
-        let draw_cell = |root: &DrawingArea<_, _>, column, row| {
-            root.draw(&Rectangle::new(
-                [(column, row), (column + 1, row + 1)],
-                ShapeStyle::from(&BLACK.mix(0.1)).filled(),
-            ))
-        };
-
-        // Render the regions!
-        let mut labels: Vec<(Text<(i32, i32), String>, (usize, usize))> = Vec::new();
-        for region in &layout.regions {
-            if let Some(offset) = region.offset {
-                // Sort the region's columns according to the defined ordering.
-                let mut columns = region.columns.keys().cloned().collect::<Vec<_>>();
-                columns.sort_unstable_by_key(|a| column_index(&cs, *a));
-
-                // Render contiguous parts of the same region as a single box.
-                let mut width = None;
-                for column in columns {
-                    let idx = column_index(&cs, column);
-                    if self.show_column_names {
-                        if let Some(name) = region.columns.get(&column).unwrap() {
-                            // Columns
-                            labels.push((
-                                Text::new(name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
-                                (idx, offset))
-                            );
-                        }
-                    }
-                    match width {
-                        Some((start, end)) if end == idx => width = Some((start, end + 1)),
-                        Some((start, end)) => {
-                            draw_region(&root, (start, offset), (end, offset + region.rows))?;
-                            if self.show_region_names {
-                                labels.push((
-                                    Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
-                                    (start, offset))
-                                );
-                            }
-                            width = Some((idx, idx + 1));
-                        }
-                        None => width = Some((idx, idx + 1)),
-                    }
-                }
-
-                // Render the last part of the region.
-                if let Some((start, end)) = width {
-                    draw_region(&root, (start, offset), (end, offset + region.rows))?;
-                    if self.show_column_names {
-                        labels.push((
-                            Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
-                            (start, offset))
-                        );
-                    }
-                }
-            }
-        }
-
-        let draw_and_label_cells = 
-            | labels: &mut Vec<(Text<(i32, i32), String>, (usize, usize))>, cells: HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>| 
-            {
-                for ((column, row), (annotation, value)) in cells {
-                    draw_cell(&root, column_index(&cs, column), row).unwrap();
-                    match annotation {
-                        Some(annotation) if self.show_cell_annotations => {
-                            labels.push((
-                                Text::new(annotation.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
-                                (column_index(&cs, column), row))
-                            );
-                        },
-                        _ => (),
-                    };
-                    match value {
-                        Some(value) if self.show_cell_assignments => {
-                            labels.push((
-                                Text::new(format!("{}", value), (10, 10), ("sans-serif", 15.0).into_font()),
-                                (column_index(&cs, column), row))
-                            );
-                        },
-                        _ => (),
-                    };
-                }
-            };
-
-        // Darken the cells of the region that have been assigned to.
-        for region in layout.regions {
-            draw_and_label_cells(&mut labels, region.cells)
-        }
-        draw_and_label_cells(&mut labels, layout.loose_cells);
-
-
-        // Mark equality-constrained cells.
-        if self.mark_equality_cells {
-            let mut cells = HashSet::new();
-            for (l_col, l_row, r_col, r_row) in &layout.equality {
-                let l_col = column_index(&cs, (*l_col).into());
-                let r_col = column_index(&cs, (*r_col).into());
-
-                // Deduplicate cells.
-                cells.insert((l_col, *l_row));
-                cells.insert((r_col, *r_row));
-            }
-
-            for (col, row) in cells {
-                root.draw(&Rectangle::new(
-                    [(col, row), (col + 1, row + 1)],
-                    ShapeStyle::from(&RED.mix(0.5)).filled(),
-                ))?;
-            }
-        }
-
-        // Draw lines between equality-constrained cells.
-        if self.show_equality_constraints {
-            for (l_col, l_row, r_col, r_row) in &layout.equality {
-                let l_col = column_index(&cs, (*l_col).into());
-                let r_col = column_index(&cs, (*r_col).into());
-                root.draw(&PathElement::new(
-                    [(l_col, *l_row), (r_col, *r_row)],
-                    ShapeStyle::from(&RED),
-                ))?;
-            }
-        }
-
-        // Add a line showing the total used rows.
-        root.draw(&PathElement::new(
-            [(0, layout.total_rows), (total_columns, layout.total_rows)],
-            ShapeStyle::from(&BLACK),
-        ))?;
-
-        root.draw_mesh(
-            |b, l| {
-                l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
-            }, 
-            n, 
-            total_columns
+        self.draw_circuit(
+            layout, 
+            (
+                cs.num_instance_columns, 
+                cs.num_instance_columns + cs.num_advice_columns, 
+                cs.num_instance_columns + cs.num_advice_columns + cs.num_fixed_columns - selector_polys.len(),
+                total_columns
+            )
         )?;
 
-
-        // Render labels last, on top of everything else.
-        if !self.hide_labels {
-            for (label, top_left) in labels {
-                root.draw(&(EmptyElement::at(top_left) + label))?;
-            }
-            root.draw(
-                &(EmptyElement::at((0, layout.total_rows))
-                    + Text::new(
-                        format!("{} used rows", layout.total_rows),
-                        (10, 10),
-                        ("sans-serif", 15.0).into_font(),
-                    )),
-            )?;
-            root.draw(
-                &(EmptyElement::at((0, usable_rows))
-                    + Text::new(
-                        format!("{} usable rows", usable_rows),
-                        (10, 10),
-                        ("sans-serif", 15.0).into_font(),
-                    )),
-            )?;
-        }
         Ok(())
     }
 }
@@ -511,16 +599,9 @@ impl<AF> Layout<AF> {
         }
     }
 
-    fn get_regions_by_name(&self, name: &str) -> Vec<usize> {
+    fn get_regions_by_name(&self, name: &str) -> Option<usize> {
         self.regions.iter()
-            .enumerate()
-            .filter(|(i, r)| r.name == name)
-            .map(|(i, r)| i)
-            .collect()
-    }
-
-    fn get_region_by_idx(&self, idx: usize) -> Option<&Region<AF>> {
-        self.regions.get(idx)
+            .position(|r| r.name == name)
     }
 
     fn has_column(&self, column: RegionColumn) -> bool {
@@ -601,6 +682,9 @@ impl<F: Field> Assignment<F> for Layout<Assigned<F>> {
         Ok(Value::unknown())
     }
 
+    // Thoughts: 之后做Cell Label，通过 A: FnOnce() -> AR
+    // 传一个 struct CellInfo = (CellType, String)进来，
+    // CellInfo实现AR：Into<String> 把名字留下，CellType 拿去 render
     fn assign_advice<V, VR, A, AR>(
         &mut self,
         annotation: A,
@@ -673,7 +757,7 @@ impl<F: Field> Assignment<F> for Layout<Assigned<F>> {
         Value::unknown()
     }
 
-    fn annotate_column<A, AR>(&mut self, annotation: A, mut column: Column<Any>)
+    fn annotate_column<A, AR>(&mut self, annotation: A, column: Column<Any>)
     where
         A: FnOnce() -> AR,
         AR: Into<String>,

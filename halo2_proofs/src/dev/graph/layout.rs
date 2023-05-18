@@ -286,21 +286,29 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
     ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
         let mut labels = Vec::new();
 
-        let draw_region = |top_left:(usize, usize), bottom_right: (usize, usize)| {
+        let draw_region = |top_left:(usize, usize), buttom_right: (usize, usize)| {
             if let Some(root) = &self.root {
                 root.draw(&Rectangle::new(
-                    [top_left, bottom_right],
+                    [top_left, buttom_right],
                     ShapeStyle::from(&WHITE).filled(),
                 ))?;
                 root.draw(&Rectangle::new(
-                    [top_left, bottom_right],
+                    [top_left, buttom_right],
                     ShapeStyle::from(&RED.mix(0.2)).filled(),
                 ))?;
                 root.draw(&Rectangle::new(
-                    [top_left, bottom_right],
+                    [top_left, buttom_right],
                     ShapeStyle::from(&GREEN.mix(0.2)).filled(),
                 ))?;
-                root.draw(&Rectangle::new([top_left, bottom_right], &BLACK))?;
+                root.draw(&Rectangle::new([top_left, buttom_right], &BLACK))?;
+                // Draw mesh grid for all rows and columns
+                root.draw_mesh(
+                    |b, l| {
+                        l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
+                    }, 
+                    self.view_height.as_ref().unwrap().end, 
+                    self.view_width.as_ref().unwrap().end
+                )?;
             } else {
                 panic!("No root set");
             }
@@ -339,7 +347,6 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 None => width = Some((idx, idx + 1)),
             }
         }
-
         // Render the last part of the region.
         if let Some((start, end)) = width {
             draw_region((start, offset), (end, offset + region.rows))?;
@@ -471,6 +478,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 ShapeStyle::from(&BLACK),
             ))?;
 
+            // Draw mesh grid for all rows and columns
             root.draw_mesh(
                 |b, l| {
                     l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())

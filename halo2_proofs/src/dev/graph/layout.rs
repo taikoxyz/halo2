@@ -43,7 +43,6 @@ use plotters::prelude::*;
 /// let k = 5; // Suitable size for MyCircuit
 /// CircuitLayout::default().render(k, &circuit, &drawing_area).unwrap();
 /// ```
-#[derive(Default)]
 pub struct CircuitLayout<DB: DrawingBackend, F: Field> {
 
     hide_labels: bool,
@@ -62,6 +61,26 @@ pub struct CircuitLayout<DB: DrawingBackend, F: Field> {
 
     root: Option<DrawingArea<DB, Cartesian2d::<RangedCoordusize, RangedCoordusize>>>,
     cs: Option<ConstraintSystem<F>>,
+}
+
+impl<DB: DrawingBackend, F: Field> Default for CircuitLayout<DB, F> {
+    fn default() -> Self {
+        Self {
+            hide_labels: false,
+            show_region_names: true,
+            show_cell_annotations: false,
+            show_cell_assignments: false,
+            show_column_names: false,
+            mark_equality_cells: false,
+            show_equality_constraints: false,
+            view_width: None,
+            view_height: None,
+            target_region_name: None,
+            target_region_idx: None,
+            root: None,
+            cs: None,
+        }
+    }
 }
 
 impl<DB: DrawingBackend, F: Field> Debug for CircuitLayout<DB, F> {
@@ -104,12 +123,12 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
         self
     }
 
-    pub fn regions_by_name(mut self, name: String) -> Self {
-        self.target_region_name = Some(name);
+    pub fn region_by_name(mut self, name: &str) -> Self {
+        self.target_region_name = Some(name.to_string());
         self
     }
 
-    pub fn regions_by_idx(mut self, idx: usize) -> Self {
+    pub fn region_by_idx(mut self, idx: usize) -> Self {
         self.target_region_idx = Some(idx);
         self
     }
@@ -211,11 +230,12 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
 
     fn draw_and_label_cells(
         &self,
-        cells: HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>
+        cells: &HashMap<(RegionColumn, usize), (Option<String>, Option<Assigned<F>>)>
     )  -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
         let mut labels: Vec<(Text<(i32, i32), String>, (usize, usize))> = Vec::new();
         for ((column, row), (annotation, value)) in cells {
-            let col_idx = self.column_index(&column);
+            let row = row.clone();
+            let col_idx = self.column_index(column);
             if let Some(root) = &self.root {
                 root.draw(&Rectangle::new(
                     [(col_idx, row), (col_idx + 1, row + 1)],
@@ -330,6 +350,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 );
             }
         }
+        self.draw_and_label_cells(&region.cells)?;
         self.draw_labels(labels)?;
         Ok(())
     }
@@ -407,9 +428,9 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
 
             // Darken the cells of the region that have been assigned to.
             for region in layout.regions {
-                self.draw_and_label_cells(region.cells);
+                self.draw_and_label_cells(&region.cells)?;
             }
-            self.draw_and_label_cells(layout.loose_cells);
+            self.draw_and_label_cells(&layout.loose_cells)?;
 
 
             // Mark equality-constrained cells.

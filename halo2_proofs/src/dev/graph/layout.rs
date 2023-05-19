@@ -166,7 +166,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
         drawing_area: &DrawingArea<DB, Shift>,
         width: Range<usize>, 
         height: Range<usize>
-    ) {
+    ) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>> {
         match (self.view_width.as_ref(), self.view_height.as_ref()) {
             (Some(w), Some(h)) => {
                 self.root = Some(drawing_area
@@ -209,6 +209,21 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 );
             },
         };
+        Ok(())
+    }
+
+    fn draw_mesh(&self) -> Result<(), DrawingAreaErrorKind<DB::ErrorType>>{
+        // Draw mesh grid for all rows and columns
+        self.root.as_ref()
+            .expect("Root not set")
+            .draw_mesh(
+                |b, l| {
+                    l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
+                }, 
+                self.view_height.as_ref().unwrap().end, 
+                self.view_width.as_ref().unwrap().end
+            )?;
+        Ok(())
     }
 
     fn column_index(&self, column: &RegionColumn) -> usize {
@@ -264,6 +279,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
         self.draw_labels(labels)?;
         Ok(())
     }
+    
 
     fn region_area(&self, region: &Region<Assigned<F>>) -> (Range<usize>, Range<usize>) {
         let start = self.column_index(region.columns.keys().collect::<Vec<_>>()[0]);
@@ -301,14 +317,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                     ShapeStyle::from(&GREEN.mix(0.2)).filled(),
                 ))?;
                 root.draw(&Rectangle::new([top_left, buttom_right], &BLACK))?;
-                // Draw mesh grid for all rows and columns
-                root.draw_mesh(
-                    |b, l| {
-                        l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
-                    }, 
-                    self.view_height.as_ref().unwrap().end, 
-                    self.view_width.as_ref().unwrap().end
-                )?;
+
             } else {
                 panic!("No root set");
             }
@@ -478,15 +487,6 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 ShapeStyle::from(&BLACK),
             ))?;
 
-            // Draw mesh grid for all rows and columns
-            root.draw_mesh(
-                |b, l| {
-                    l.draw(b, &ShapeStyle::from(&BLACK.mix(0.2)).filled())
-                }, 
-                view_bottom, 
-                total_columns
-            )?;
-
             // Render labels last, on top of everything else.
             if !self.hide_labels {
                 root.draw(
@@ -548,6 +548,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
             let (width, height) = self.region_area(region);
             self.apply_drawing_area(drawing_area, width, height);
             self.draw_region(region)?;
+            self.draw_mesh()?;
             return Ok(());
         } 
         if let Some(s) = &self.target_region_name {
@@ -556,6 +557,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
             let (width, height) = self.region_area(region);
             self.apply_drawing_area(drawing_area, width, height);
             self.draw_region(region)?;
+            self.draw_mesh()?;
             return Ok(());
         }
 
@@ -575,7 +577,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 total_columns
             )
         )?;
-
+        self.draw_mesh()?;
         Ok(())
     }
 }

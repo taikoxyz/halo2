@@ -295,7 +295,6 @@ fn main() {
         // Render the circuit onto your area!
         // The first argument is the size parameter for the circuit.
         .show_cell_assignments(true)
-        .region_by_name("region_0")
         .render(5, &circuit, &root)
         .unwrap();
 }

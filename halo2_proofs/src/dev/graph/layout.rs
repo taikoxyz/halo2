@@ -20,6 +20,10 @@ use crate::{
 use plotters::coord::types::RangedCoordusize;
 use plotters::prelude::*;
 
+/// Todo: 
+///     - Fix selector annotation
+///     - Coordinate with CellManager
+
 /// Graphical renderer for circuit layouts.
 ///
 /// Cells that have been assigned to by the circuit will be shaded. If any cells are

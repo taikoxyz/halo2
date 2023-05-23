@@ -215,7 +215,7 @@ impl<F: FieldExt> Circuit<F> for MyCircuit<F> {
             let sf = meta.query_fixed(sf, Rotation::cur());
             let e = meta.query_advice(e, Rotation::prev());
             let b = meta.query_advice(b, Rotation::cur());
-            let c = meta.query_advice(c, Rotation::cur());
+            let c = meta.query_advice(c, Rotation::cur()); 
 
             let sa = meta.query_fixed(sa, Rotation::cur());
             let sb = meta.query_fixed(sb, Rotation::cur());

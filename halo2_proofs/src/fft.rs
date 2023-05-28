@@ -21,16 +21,16 @@ pub fn fft<Scalar: Field, G: FftGroup<Scalar>>(
 ) {
     match var("FFT") {
         Err(_) => {
-            // NO `FFT=` environment variable specified
-            log_info("=== Baseline FFT ===".to_string());
-            baseline::fft(a, omega, log_n, data, inverse)
+            // No `FFT=` environment variable specified.
+            log_info("=== Parallel FFT ===".to_string());
+            parallel::fft(a, omega, log_n, data, inverse)
         }
         Ok(fft_impl) if fft_impl == "baseline"=> {
             log_info("=== Baseline FFT ===".to_string());
             baseline::fft(a, omega, log_n, data, inverse)
         }
         Ok(fft_impl) if fft_impl == "recursive" => {
-            log_info("Recusive FFT ===".to_string());
+            log_info("=== Recusive FFT ===".to_string());
             recursive::fft(a, omega, log_n, data, inverse)
         }
         Ok(fft_impl) if fft_impl == "parallel" => {

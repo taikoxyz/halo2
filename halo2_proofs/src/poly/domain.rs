@@ -2,18 +2,16 @@
 //! domain that is of a suitable size for the application.
 
 use crate::{
-    arithmetic::{self, best_fft, parallelize},
-    fft::{
-        recursive::{self, FFTData},
-    },
+    arithmetic::{best_fft, parallelize},
+    fft::recursive::FFTData,
     multicore,
-    plonk::{get_duration, get_time, start_measure, stop_measure, Assigned, log_info},
+    plonk::{get_duration, get_time, log_info, start_measure, stop_measure, Assigned},
 };
 
 use super::{Coeff, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, Rotation};
 use ff::WithSmallOrderMulGroup;
 use group::{
-    ff::{self, BatchInvert, Field, PrimeField},
+    ff::{BatchInvert, Field, PrimeField},
     Group,
 };
 
@@ -26,7 +24,7 @@ pub static mut FFT_TOTAL_TIME: usize = 0;
 /// performing operations on an evaluation domain of size $2^k$ and an extended
 /// domain of size $2^{k} * j$ with $j \neq 0$.
 #[derive(Clone, Debug)]
-pub struct EvaluationDomain<F: ff::Field> {
+pub struct EvaluationDomain<F: Field> {
     n: u64,
     k: u32,
     extended_k: u32,
@@ -44,7 +42,8 @@ pub struct EvaluationDomain<F: ff::Field> {
 
     /// Recursive stuff
     fft_data: FFTData<F>,
-    extended_fft_data: FFTData<F>,
+    /// Recursive stuff for the extension field
+    pub extended_fft_data: FFTData<F>,
 }
 
 impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
@@ -137,7 +136,6 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
             .chain(Some(&mut extended_omega_inv))
             .chain(Some(&mut omega_inv))
             .batch_invert();
-
 
         EvaluationDomain {
             n,
@@ -265,14 +263,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         self.distribute_powers_zeta(&mut a.values, true);
         a.values.resize(self.extended_len(), F::ZERO);
 
-        let l = a.len();
-        let fft_data = self.get_fft_data(l);
-
         best_fft(
             &mut a.values,
             self.extended_omega,
             self.extended_k,
-            fft_data,
+            &self.extended_fft_data,
             false,
         );
 
@@ -521,18 +516,18 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
     /// Get the private `fft_data`
     pub fn get_fft_data(&self, l: usize) -> &FFTData<F> {
-            if l == self.fft_data.get_n() {
-                &self.fft_data
-            } else {
-                &self.extended_fft_data
-            }
+        if l == self.fft_data.get_n() {
+            &self.fft_data
+        } else {
+            &self.extended_fft_data
         }
+    }
 }
 
 /// Represents the minimal parameters that determine an `EvaluationDomain`.
 #[allow(dead_code)]
 #[derive(Debug)]
-pub struct PinnedEvaluationDomain<'a, F: ff::Field> {
+pub struct PinnedEvaluationDomain<'a, F: Field> {
     k: &'a u32,
     extended_k: &'a u32,
     omega: &'a F,

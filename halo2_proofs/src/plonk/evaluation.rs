@@ -455,11 +455,8 @@ impl<C: CurveAffine> Evaluator<C> {
                 // Polynomials required for this lookup.
                 // Calculated here so these only have to be kept in memory for the short time
                 // they are actually needed.
-                let product_coset = pk
-                    .vk
-                    .domain
-                    .coeff_to_extended(lookup.product_poly.clone());
-                let permuted_input_coset  = pk
+                let product_coset = pk.vk.domain.coeff_to_extended(lookup.product_poly.clone());
+                let permuted_input_coset = pk
                     .vk
                     .domain
                     .coeff_to_extended(lookup.permuted_input_poly.clone());

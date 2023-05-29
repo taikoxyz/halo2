@@ -10,6 +10,7 @@ use ff::Field;
 use sealed::SealedPhase;
 use std::cmp::Ordering;
 use std::collections::HashMap;
+use std::env::var;
 use std::fmt::{Debug, Formatter};
 use std::{
     convert::TryFrom,
@@ -2187,6 +2188,15 @@ impl<F: Field> ConstraintSystem<F> {
                 .max()
                 .unwrap_or(0),
         );
+
+        fn get_max_degree() -> usize {
+            var("MAX_DEGREE").map_or(usize::MAX, |max_degree_str| {
+                max_degree_str
+                    .parse()
+                    .expect("Cannot parse MAX_DEGREE env var as usize")
+            })
+        }
+        degree = std::cmp::min(degree, get_max_degree());
 
         std::cmp::max(degree, self.minimum_degree.unwrap_or(1))
     }

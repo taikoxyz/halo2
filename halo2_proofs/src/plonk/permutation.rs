@@ -127,8 +127,7 @@ impl<C: CurveAffine> VerifyingKey<C> {
 #[derive(Clone, Debug)]
 pub(crate) struct ProvingKey<C: CurveAffine> {
     permutations: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
-    polys: Vec<Polynomial<C::Scalar, Coeff>>,
-    pub(super) cosets: Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>,
+    pub(super) polys: Vec<Polynomial<C::Scalar, Coeff>>,
 }
 
 impl<C: SerdeCurveAffine> ProvingKey<C>
@@ -139,11 +138,9 @@ where
     pub(super) fn read<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self> {
         let permutations = read_polynomial_vec(reader, format)?;
         let polys = read_polynomial_vec(reader, format)?;
-        let cosets = read_polynomial_vec(reader, format)?;
         Ok(ProvingKey {
             permutations,
             polys,
-            cosets,
         })
     }
 
@@ -155,7 +152,6 @@ where
     ) -> io::Result<()> {
         write_polynomial_slice(&self.permutations, writer, format)?;
         write_polynomial_slice(&self.polys, writer, format)?;
-        write_polynomial_slice(&self.cosets, writer, format)?;
         Ok(())
     }
 }
@@ -165,6 +161,5 @@ impl<C: CurveAffine> ProvingKey<C> {
     pub(super) fn bytes_length(&self) -> usize {
         polynomial_slice_byte_length(&self.permutations)
             + polynomial_slice_byte_length(&self.polys)
-            + polynomial_slice_byte_length(&self.cosets)
     }
 }

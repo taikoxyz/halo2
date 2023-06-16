@@ -481,7 +481,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         let data = self.get_fft_data(result.len());
         best_fft(&mut result, self.extended_omega, self.extended_k, data, false);
         parallelize(&mut result_poly.values, |values, start| {
-            for (value, other) in values.iter_mut().zip(result[start..].into_iter()) {
+            for (value, other) in values.iter_mut().zip(result[start..].iter()) {
                 * value += other;
             }
         });

@@ -204,6 +204,7 @@ pub struct Evaluator<C: CurveAffine> {
     /// Number of custom gate constraints
     num_custom_gate_constraints: usize,
     ///  Lookups evalution, degree, used instance and advice columns
+    #[allow(clippy::type_complexity)]
     lookups: Vec<(
         GraphEvaluator<C>,
         usize,
@@ -428,8 +429,12 @@ impl<C: CurveAffine> Evaluator<C> {
 
         let mut value_part_clusters = Vec::new();
         value_part_clusters.resize(num_clusters, Vec::new());
-        for cluster_idx in 0..num_clusters {
-            value_part_clusters[cluster_idx].resize(1 << cluster_idx, domain.empty_lagrange());
+        for (cluster_idx, cluster) in value_part_clusters
+            .iter_mut()
+            .enumerate()
+            .take(num_clusters)
+        {
+             cluster.resize(1 << cluster_idx, domain.empty_lagrange());
         }
 
         // Calculate the quotient polynomial for each part

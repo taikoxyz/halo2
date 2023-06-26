@@ -371,12 +371,11 @@ pub struct PinnedVerificationKey<'a, C: CurveAffine> {
 #[derive(Clone, Debug)]
 pub struct ProvingKey<C: CurveAffine> {
     vk: VerifyingKey<C>,
-    l0: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
-    l_last: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
-    l_active_row: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
+    l0: Polynomial<C::Scalar, Coeff>,
+    l_last: Polynomial<C::Scalar, Coeff>,
+    l_active_row: Polynomial<C::Scalar, Coeff>,
     fixed_values: Vec<Polynomial<C::Scalar, LagrangeCoeff>>,
     fixed_polys: Vec<Polynomial<C::Scalar, Coeff>>,
-    fixed_cosets: Vec<Polynomial<C::Scalar, ExtendedLagrangeCoeff>>,
     permutation: permutation::ProvingKey<C>,
     ev: Evaluator<C>,
 }
@@ -398,7 +397,6 @@ where
             + scalar_len * (self.l0.len() + self.l_last.len() + self.l_active_row.len())
             + polynomial_slice_byte_length(&self.fixed_values)
             + polynomial_slice_byte_length(&self.fixed_polys)
-            + polynomial_slice_byte_length(&self.fixed_cosets)
             + self.permutation.bytes_length()
     }
 }
@@ -424,7 +422,6 @@ where
         self.l_active_row.write(writer, format)?;
         write_polynomial_slice(&self.fixed_values, writer, format)?;
         write_polynomial_slice(&self.fixed_polys, writer, format)?;
-        write_polynomial_slice(&self.fixed_cosets, writer, format)?;
         self.permutation.write(writer, format)?;
         Ok(())
     }
@@ -456,7 +453,6 @@ where
         let l_active_row = Polynomial::read(reader, format)?;
         let fixed_values = read_polynomial_vec(reader, format)?;
         let fixed_polys = read_polynomial_vec(reader, format)?;
-        let fixed_cosets = read_polynomial_vec(reader, format)?;
         let permutation = permutation::ProvingKey::read(reader, format)?;
         let ev = Evaluator::new(vk.cs());
         Ok(Self {
@@ -466,7 +462,6 @@ where
             l_active_row,
             fixed_values,
             fixed_polys,
-            fixed_cosets,
             permutation,
             ev,
         })

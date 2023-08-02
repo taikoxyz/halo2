@@ -264,7 +264,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
             match annotation {
                 Some(annotation) if self.show_cell_annotations => {
                     labels.push((
-                        Text::new(annotation.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                        Text::new(annotation.clone(), (1, 1), ("sans-serif", 15.0).into_font()),
                         (col_idx, row))
                     );
                 },
@@ -273,7 +273,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
             match value {
                 Some(value) if self.show_cell_assignments => {
                     labels.push((
-                        Text::new(format!("{}", value), (10, 10), ("sans-serif", 15.0).into_font()),
+                        Text::new(format!("{:?}", value), (1, 1), ("sans-serif", 15.0).into_font()),
                         (col_idx, row))
                     );
                 },
@@ -308,17 +308,17 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
 
         let draw_region = |top_left:(usize, usize), buttom_right: (usize, usize)| {
             if let Some(root) = &self.root {
+                // root.draw(&Rectangle::new(
+                //     [top_left, buttom_right],
+                //     ShapeStyle::from(&WHITE).filled(),
+                // ))?;
+                // root.draw(&Rectangle::new(
+                //     [top_left, buttom_right],
+                //     ShapeStyle::from(&RED.mix(0.2)).filled(),
+                // ))?;
                 root.draw(&Rectangle::new(
                     [top_left, buttom_right],
-                    ShapeStyle::from(&WHITE).filled(),
-                ))?;
-                root.draw(&Rectangle::new(
-                    [top_left, buttom_right],
-                    ShapeStyle::from(&RED.mix(0.2)).filled(),
-                ))?;
-                root.draw(&Rectangle::new(
-                    [top_left, buttom_right],
-                    ShapeStyle::from(&GREEN.mix(0.2)).filled(),
+                    ShapeStyle::from(&GREEN.mix(0.1)).filled(),
                 ))?;
                 root.draw(&Rectangle::new([top_left, buttom_right], &BLACK))?;
 
@@ -340,7 +340,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                 if let Some(name) = region.columns.get(&column).unwrap() {
                     // Columns
                     labels.push((
-                        Text::new(name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                        Text::new(name.clone(), (1, 1), ("sans-serif", 15.0).into_font()),
                         (idx, offset))
                     );
                 }
@@ -351,7 +351,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                     draw_region( (start, offset), (end, offset + region.rows))?;
                     if self.show_region_names {
                         labels.push((
-                            Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                            Text::new(region.name.clone(), (1, 1), ("sans-serif", 15.0).into_font()),
                             (start, offset))
                         );
                     }
@@ -365,7 +365,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
             draw_region((start, offset), (end, offset + region.rows))?;
             if self.show_column_names {
                 labels.push((
-                    Text::new(region.name.clone(), (10, 10), ("sans-serif", 15.0).into_font()),
+                    Text::new(region.name.clone(), (1, 1), ("sans-serif", 15.0).into_font()),
                     (start, offset))
                 );
             }
@@ -497,7 +497,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                     &(EmptyElement::at((0, layout.total_rows))
                         + Text::new(
                             format!("{} used rows", layout.total_rows),
-                            (10, 10),
+                            (1, 1),
                             ("sans-serif", 15.0).into_font(),
                         )),
                 )?;
@@ -505,7 +505,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
                     &(EmptyElement::at((0, usable_rows))
                         + Text::new(
                             format!("{} usable rows", usable_rows),
-                            (10, 10),
+                            (1, 1),
                             ("sans-serif", 15.0).into_font(),
                         )),
                 )?;
@@ -535,7 +535,7 @@ impl<DB: DrawingBackend, F: Field> CircuitLayout<DB, F> {
         )
         .unwrap();
 
-        println!("\nDone synthesize. \n{:?}", layout.regions[0].columns);
+        println!("\nDone synthesize! \n{:?}", layout.regions[0].columns);
     
         let (cs, selector_polys) = cs.compress_selectors(layout.selectors.clone());
         self.cs = Some(cs.clone());

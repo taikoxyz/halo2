@@ -331,27 +331,46 @@ fn main() {
         test_prover::<EqAffine, W, H>(K, circuit.clone(), true);
     }
 
-    #[cfg(not(feature = "sanity-checks"))]
+    // #[cfg(not(feature = "sanity-checks"))]
+    // {
+    //     use std::ops::IndexMut;
+
+    //     let mut circuit = circuit.clone();
+    //     circuit.shuffled = circuit.shuffled.map(|mut shuffled| {
+    //         shuffled.index_mut(0).swap(0, 1);
+    //         shuffled
+    //     });
+
+    //     test_mock_prover(
+    //         K,
+    //         circuit.clone(),
+    //         Err(vec![(
+    //             ((1, "z should end with 1").into(), 0, "").into(),
+    //             FailureLocation::InRegion {
+    //                 region: (0, "Shuffle original into shuffled").into(),
+    //                 offset: 32,
+    //             },
+    //         )]),
+    //     );
+    //     test_prover::<EqAffine, W, H>(K, circuit, false);
+    // }
+
     {
-        use std::ops::IndexMut;
+        // Create the area you want to draw on.
+        // Use SVGBackend if you want to render to .svg instead.
+        use plotters::prelude::*;
+        let root = BitMapBackend::new("shuffle.png", (1024, 768)).into_drawing_area();
+        root.fill(&WHITE).unwrap();
+        let root = root
+            .titled("Shuffle Layout", ("sans-serif", 60))
+            .unwrap();
 
-        let mut circuit = circuit.clone();
-        circuit.shuffled = circuit.shuffled.map(|mut shuffled| {
-            shuffled.index_mut(0).swap(0, 1);
-            shuffled
-        });
-
-        test_mock_prover(
-            K,
-            circuit.clone(),
-            Err(vec![(
-                ((1, "z should end with 1").into(), 0, "").into(),
-                FailureLocation::InRegion {
-                    region: (0, "Shuffle original into shuffled").into(),
-                    offset: 32,
-                },
-            )]),
-        );
-        test_prover::<EqAffine, W, H>(K, circuit, false);
+        halo2_proofs::dev::CircuitLayout::default()
+            // Render the circuit onto your area!
+            // The first argument is the size parameter for the circuit.
+            .region_by_name("Shuffle original into shuffled")
+            .show_cell_annotations(true)
+            .render(8, &circuit.clone(), &root)
+            .unwrap();
     }
 }

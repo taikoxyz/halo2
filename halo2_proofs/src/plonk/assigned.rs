@@ -1,4 +1,4 @@
-use std::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::{ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign}, fmt::{Formatter, self}, write, format};
 
 use group::ff::Field;
 
@@ -38,6 +38,30 @@ impl<F: Field> From<F> for Assigned<F> {
 impl<F: Field> From<(F, F)> for Assigned<F> {
     fn from((numerator, denominator): (F, F)) -> Self {
         Assigned::Rational(numerator, denominator)
+    }
+}
+
+impl<F: Field> fmt::Display for Assigned<F> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            Self::Zero => "0".to_owned(),
+            Self::Trivial(numerator) => format!("{:?}", numerator)
+                .trim_start_matches("0x")
+                .trim_start_matches("0")
+                .to_owned(),
+            Self::Rational(numerator, denominator) => {
+                let n = format!("{:?}", numerator)
+                    .trim_end_matches("0x")
+                    .trim_start_matches("0")
+                    .to_owned();
+                let d = format!("{:?}", denominator)                    
+                    .trim_end_matches("0x")
+                    .trim_start_matches("0")
+                    .to_owned();
+                format!("{}/{}", n, d)
+            },
+        };
+        write!(f, "{}", s)
     }
 }
 

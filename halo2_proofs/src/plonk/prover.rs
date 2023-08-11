@@ -191,9 +191,21 @@ where
             let mut range_start = self.rw_rows.start;
             for (i, sub_range) in ranges.iter().enumerate() {
                 if sub_range.start < range_start {
+                    log::error!(
+                        "subCS_{} sub_range.start ({}) < range_start ({})",
+                        i,
+                        sub_range.start,
+                        range_start
+                    );
                     return Err(Error::Synthesis);
                 }
-                if i == ranges.len() - 1 && sub_range.end >= self.rw_rows.end {
+                if i == ranges.len() - 1 && sub_range.end > self.rw_rows.end {
+                    log::error!(
+                        "subCS_{} sub_range.end ({}) > self.rw_rows.end ({})",
+                        i,
+                        sub_range.end,
+                        self.rw_rows.end
+                    );
                     return Err(Error::Synthesis);
                 }
                 range_start = sub_range.end;
@@ -286,6 +298,7 @@ where
             }
 
             if !self.rw_rows.contains(&row) {
+                log::error!("assign_advice: {:?}, row: {}", column, row);
                 return Err(Error::Synthesis);
             }
 

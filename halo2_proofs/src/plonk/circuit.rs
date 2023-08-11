@@ -512,7 +512,7 @@ impl TableColumn {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct Challenge {
     index: usize,
-    phase: sealed::Phase,
+    pub(crate) phase: sealed::Phase,
 }
 
 impl Challenge {
@@ -571,12 +571,12 @@ pub trait Assignment<F: Field>: Sized + Send {
         AR: Into<String>;
 
     /// Fork
-    fn fork(&mut self, ranges: &[Range<usize>]) -> Result<Vec<Self>, Error> {
+    fn fork(&mut self, _ranges: &[Range<usize>]) -> Result<Vec<Self>, Error> {
         unimplemented!("fork is not implemented by default")
     }
 
     /// Merge
-    fn merge(&mut self, sub_cs: Vec<Self>) -> Result<(), Error> {
+    fn merge(&mut self, _sub_cs: Vec<Self>) -> Result<(), Error> {
         unimplemented!("merge is not implemented by default")
     }
 
@@ -701,7 +701,7 @@ pub trait Circuit<F: Field> {
 }
 
 /// Low-degree expression representing an identity that must hold over the committed columns.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Expression<F> {
     /// This is a constant polynomial
     Constant(F),
@@ -1213,7 +1213,7 @@ pub(crate) struct PointIndex(pub usize);
 
 /// A "virtual cell" is a PLONK cell that has been queried at a particular relative offset
 /// within a custom gate.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VirtualCell {
     pub(crate) column: Column<Any>,
     pub(crate) rotation: Rotation,
@@ -1339,7 +1339,7 @@ impl<F: Field, C: Into<Constraint<F>>, Iter: IntoIterator<Item = C>> IntoIterato
 }
 
 /// Gate
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Gate<F: Field> {
     name: &'static str,
     constraint_names: Vec<&'static str>,
@@ -1420,7 +1420,7 @@ pub struct ConstraintSystem<F: Field> {
     pub(crate) lookups: Vec<mv_lookup::Argument<F>>,
 
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to their annotation.
-    pub(crate) general_column_annotations: HashMap<metadata::Column, String>,
+    pub(crate) general_column_annotations: BTreeMap<metadata::Column, String>,
 
     // Vector of fixed columns, which can be used to store constant values
     // that are copied into advice columns.
@@ -1507,7 +1507,7 @@ impl<F: Field> Default for ConstraintSystem<F> {
             permutation: permutation::Argument::new(),
             lookups_map: BTreeMap::default(),
             lookups: Vec::new(),
-            general_column_annotations: HashMap::new(),
+            general_column_annotations: BTreeMap::new(),
             constants: vec![],
             minimum_degree: None,
         }

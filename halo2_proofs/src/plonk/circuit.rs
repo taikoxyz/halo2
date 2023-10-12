@@ -1106,7 +1106,7 @@ impl<F: Field> Expression<F> {
     }
 }
 
-impl<F: ff::Field> std::fmt::Debug for Expression<F> {
+impl<F: std::fmt::Debug> std::fmt::Debug for Expression<F> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::Constant(scalar) => f.debug_tuple("Constant").field(scalar).finish(),
@@ -1417,7 +1417,7 @@ pub struct ConstraintSystem<F: Field> {
 
     // Vector of lookup arguments, where each corresponds to a sequence of
     // input expressions and a sequence of table expressions involved in the lookup.
-    pub(crate) lookups: Vec<mv_lookup::Argument<F>>,
+    pub lookups: Vec<mv_lookup::Argument<F>>,
 
     // List of indexes of Fixed columns which are associated to a circuit-general Column tied to their annotation.
     pub(crate) general_column_annotations: BTreeMap<metadata::Column, String>,
@@ -1633,7 +1633,11 @@ impl<F: Field> ConstraintSystem<F> {
         let mut lookups: Vec<_> = vec![];
         for v in self.lookups_map.values() {
             let LookupTracker { table, inputs } = v;
-            let mut args = vec![super::mv_lookup::Argument::new(table, &[inputs[0].clone()])];
+            let mut args = vec![super::mv_lookup::Argument::new(
+                "mv_lookup",
+                table,
+                &[inputs[0].clone()],
+            )];
 
             for input in inputs.iter().skip(1) {
                 let cur_input_degree = input.iter().map(|expr| expr.degree()).max().unwrap();
@@ -1650,7 +1654,11 @@ impl<F: Field> ConstraintSystem<F> {
                 }
 
                 if !indicator {
-                    args.push(super::mv_lookup::Argument::new(table, &[input.clone()]))
+                    args.push(super::mv_lookup::Argument::new(
+                        "dummy",
+                        table,
+                        &[input.clone()],
+                    ))
                 }
             }
             lookups.append(&mut args);

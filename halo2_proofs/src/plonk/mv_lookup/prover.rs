@@ -275,18 +275,41 @@ impl<C: CurveAffine> Prepared<C> {
         // Compute the evaluations of the lookup grand sum polynomial
         // over our domain, starting with phi[0] = 0
         let blinding_factors = pk.vk.cs.blinding_factors();
-        let phi = iter::once(C::Scalar::zero())
-            .chain(log_derivatives_diff)
-            .scan(C::Scalar::zero(), |state, cur| {
-                *state += &cur;
-                Some(*state)
-            })
-            // Take all rows including the "last" row which should
-            // be a 0
-            .take(params.n() as usize - blinding_factors)
-            // Chain random blinding factors.
-            .chain((0..blinding_factors).map(|_| C::Scalar::random(&mut rng)))
-            .collect::<Vec<_>>();
+        let phi = {
+            let active_size = params.n() as usize - blinding_factors;
+            let chunk = {
+                let num_threads = crate::multicore::current_num_threads();
+                let mut chunk = (active_size as usize) / num_threads;
+                if chunk < num_threads {
+                    chunk = 1;
+                }
+                chunk
+            };
+            let num_chunks = (active_size as usize + chunk - 1) / chunk;
+            let mut segment_sum = vec![C::Scalar::zero(); num_chunks];
+            let mut grand_sum = iter::once(C::Scalar::zero())
+                .chain(log_derivatives_diff)
+                .take(active_size)
+                .collect::<Vec<_>>();
+            parallelize(&mut grand_sum, |segment_grand_sum, _| {
+                for i in 1..segment_grand_sum.len() {
+                    segment_grand_sum[i] += segment_grand_sum[i - 1];
+                }
+            });
+            for i in 1..segment_sum.len() {
+                segment_sum[i] = segment_sum[i - 1] + grand_sum[i * chunk - 1];
+            }
+            parallelize(&mut grand_sum, |grand_sum, start| {
+                let prefix_sum = segment_sum[start / chunk];
+                for v in grand_sum.iter_mut() {
+                    *v += prefix_sum;
+                }
+            });
+            grand_sum
+                .into_iter()
+                .chain((0..blinding_factors).map(|_| C::Scalar::random(&mut rng)))
+                .collect::<Vec<_>>()
+        };
         assert_eq!(phi.len(), params.n() as usize);
         let phi = pk.vk.domain.lagrange_from_vec(phi);
 

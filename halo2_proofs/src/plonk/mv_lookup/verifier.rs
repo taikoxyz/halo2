@@ -95,8 +95,8 @@ impl<C: CurveAffine> Evaluated<C> {
         let active_rows = C::Scalar::one() - (l_last + l_blind);
 
         /*
-            φ_i(X) = f_i(X) + α
-            τ(X) = t(X) + α
+            φ_i(X) = f_i(X) + beta
+            τ(X) = t(X) + beta
             LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
             RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
         */
@@ -122,7 +122,7 @@ impl<C: CurveAffine> Evaluated<C> {
                     .fold(C::Scalar::zero(), |acc, eval| acc * &*theta + &eval)
             };
 
-            // φ_i(X) = f_i(X) + α
+            // φ_i(X) = f_i(X) + beta
             let mut f_evals: Vec<_> = argument
                 .inputs_expressions
                 .iter()
@@ -163,7 +163,7 @@ impl<C: CurveAffine> Evaluated<C> {
                 Some(l_last * self.phi_eval),
             )
             .chain(
-                // l_last(X) * (z(X)^2 - z(X)) = 0
+                // (1 - l_last - l_blind) * (lhs - rhs) = 0
                 Some(grand_sum_expression()),
             )
     }

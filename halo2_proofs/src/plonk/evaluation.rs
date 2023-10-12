@@ -508,7 +508,7 @@ impl<C: CurveAffine> Evaluator<C> {
                         });
                     }
 
-                    // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + α)
+                    // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + beta)
                     // The outer vector has capacity self.lookups.len()
                     // The middle vector has capacity domain.extended_len()
                     // The inner vector has capacity 
@@ -574,8 +574,8 @@ impl<C: CurveAffine> Evaluator<C> {
 
                         // Lookup constraints
                         /*
-                            φ_i(X) = f_i(X) + α
-                            τ(X) = t(X) + α
+                            φ_i(X) = f_i(X) + beta
+                            τ(X) = t(X) + beta
                             LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
                             RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
                                 = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
@@ -592,7 +592,7 @@ impl<C: CurveAffine> Evaluator<C> {
                             for (i, value) in values.iter_mut().enumerate() {
                                 let idx = start + i;
 
-                                // f_i(X) + α for i in expressions
+                                // f_i(X) + beta for i in expressions
                                 let inputs_value: Vec<C::ScalarExt> = inputs_lookup_evaluator
                                     .iter()
                                     .zip(inputs_eval_data.iter_mut())
@@ -620,13 +620,13 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .iter()
                                     .fold(C::Scalar::one(), |acc, input| acc * input);
 
-                                // f_i(X) + α at ω^idx
+                                // f_i(X) + beta at ω^idx
                                 let fi_inverses = &inputs_inv_sum[n][idx];
                                 let inputs_inv_sum = fi_inverses
                                     .iter()
                                     .fold(C::Scalar::zero(), |acc, input| acc + input);
 
-                                // t(X) + α
+                                // t(X) + beta
                                 let table_value = table_lookup_evaluator.evaluate(
                                     &mut table_eval_data,
                                     fixed,
@@ -663,7 +663,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                 // phi[u] = 0
                                 *value = *value * y + l_last[idx] * phi_coset[idx];
 
-                                // q(X) = LHS - RHS mod zH(X)
+                                // q(X) = (1 - (l_last(X) + l_blind(X))) * (LHS - RHS)
                                 *value = *value * y + (lhs - rhs) * l_active_row[idx];
                             }
                         });

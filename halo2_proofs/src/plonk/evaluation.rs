@@ -552,7 +552,19 @@ impl<C: CurveAffine> Evaluator<C> {
                                 inputs_values_for_extended_domain.extend_from_slice(&inputs_values);
                             }
 
-                            inputs_values_for_extended_domain.batch_invert();
+                            let num_threads = rayon::current_num_threads();
+                            let chunk_size =
+                                (inputs_values_for_extended_domain.len() + num_threads - 1)
+                                    / num_threads;
+                            rayon::scope(|scope| {
+                                for chunk in
+                                    inputs_values_for_extended_domain.chunks_mut(chunk_size)
+                                {
+                                    scope.spawn(|_| {
+                                        chunk.batch_invert();
+                                    })
+                                }
+                            });
 
                             // The outer vector has capacity domain.extended_len()
                             // The inner vector has capacity self.lookups[n].0.len()

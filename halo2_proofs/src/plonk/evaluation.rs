@@ -434,7 +434,7 @@ impl<C: CurveAffine> Evaluator<C> {
             .enumerate()
             .take(num_clusters)
         {
-             cluster.resize(1 << cluster_idx, domain.empty_lagrange());
+            cluster.resize(1 << cluster_idx, domain.empty_lagrange());
         }
 
         // Calculate the quotient polynomial for each part
@@ -538,7 +538,6 @@ impl<C: CurveAffine> Evaluator<C> {
                 }
                 constraint_idx += self.num_custom_gate_constraints;
                 stop_measure(start);
-
 
                 // Permutations
                 let start = start_measure("permutations", false);
@@ -976,7 +975,11 @@ impl<C: CurveAffine> Evaluator<C> {
     }
 
     fn compute_cluster_idx(degree: usize, max_cluster_idx: usize) -> usize {
-        let mut idx = (31 - (degree as u32).leading_zeros()) as usize;
+        let mut idx = if degree != 0 {
+            (31 - (degree as u32).leading_zeros()) as usize
+        } else {
+            0
+        };
         if 1 << idx < degree {
             idx = idx + 1;
         }
@@ -1244,4 +1247,14 @@ pub fn evaluate<F: Field, B: Basis>(
         }
     });
     values
+}
+
+mod test {
+    #[test]
+    #[should_panic(expected = "attempt to subtract with overflow")]
+    fn compute_cluster_idx_underflow() {
+        let degree = 0;
+        let idx = (31 - (degree as u32).leading_zeros()) as usize;
+        println!("idx = {}", idx);
+    }
 }

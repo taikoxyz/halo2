@@ -120,7 +120,7 @@ fn split_radix_fft<Scalar: Field, G: FftGroup<Scalar>>(
     let tmp_filler_val = tmp[0];
     let mut t1 = vec![tmp_filler_val; split_m];
     for i in 0..split_m {
-        t1[arithmetic::bitreverse(i, log_split)] = a[(i * sub_n + sub_fft_offset)];
+        t1[arithmetic::bitreverse(i, log_split)] = a[i * sub_n + sub_fft_offset];
     }
     serial_split_fft(&mut t1, twiddle_lut, sub_n, log_split as u32);
 

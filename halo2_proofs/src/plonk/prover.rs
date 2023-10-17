@@ -19,7 +19,7 @@ use super::{
     ChallengeY, Error, Expression, ProvingKey,
 };
 use crate::arithmetic::MULTIEXP_TOTAL_TIME;
-use crate::plonk::{start_measure, stop_measure, log_info};
+use crate::plonk::{log_info, start_measure, stop_measure};
 use crate::poly::FFT_TOTAL_TIME;
 use crate::{
     arithmetic::{eval_polynomial, CurveAffine},
@@ -697,7 +697,10 @@ where
     #[allow(unsafe_code)]
     unsafe {
         log_info(format!("·FFT: {}s", (FFT_TOTAL_TIME as f32) / 1000000.0));
-        log_info(format!("·MultiExps: {}s", (MULTIEXP_TOTAL_TIME as f32) / 1000000.0));
+        log_info(format!(
+            "·MultiExps: {}s",
+            (MULTIEXP_TOTAL_TIME as f32) / 1000000.0
+        ));
     }
 
     proof

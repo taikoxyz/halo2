@@ -221,13 +221,7 @@ pub fn g_to_lagrange<C: CurveAffine>(g_projective: Vec<C::Curve>, k: u32) -> Vec
     let n = g_lagrange_projective.len();
     let fft_data = FFTData::new(n, omega, omega_inv);
 
-    best_fft(
-        &mut g_lagrange_projective,
-        omega_inv,
-        k,
-        &fft_data,
-        false,
-    );
+    best_fft(&mut g_lagrange_projective, omega_inv, k, &fft_data, false);
     parallelize(&mut g_lagrange_projective, |g, _| {
         for g in g.iter_mut() {
             *g *= n_inv;

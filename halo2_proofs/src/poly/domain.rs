@@ -474,15 +474,21 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
             parallelize(&mut result[0..(self.n << i) as usize], |result, start| {
                 for (other, current) in result.iter_mut().zip(a_poly[start..].iter()) {
-                    * other += current;
+                    *other += current;
                 }
             });
         }
         let data = self.get_fft_data(result.len());
-        best_fft(&mut result, self.extended_omega, self.extended_k, data, false);
+        best_fft(
+            &mut result,
+            self.extended_omega,
+            self.extended_k,
+            data,
+            false,
+        );
         parallelize(&mut result_poly.values, |values, start| {
             for (value, other) in values.iter_mut().zip(result[start..].iter()) {
-                * value += other;
+                *value += other;
             }
         });
         result_poly
@@ -543,7 +549,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         parallelize(a, |a, index| {
             let mut c_power = c.pow_vartime(&[index as u64, 0, 0, 0]);
             for a in a {
-                * a *= c_power;
+                *a *= c_power;
                 c_power = c_power * c;
             }
         });
@@ -687,7 +693,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Get the private field `n`
-    pub fn get_n(&self) -> u64 { self.n }
+    pub fn get_n(&self) -> u64 {
+        self.n
+    }
 
     /// Get the private `fft_data`
     pub fn get_fft_data(&self, l: usize) -> &FFTData<F> {
@@ -709,10 +717,7 @@ pub struct PinnedEvaluationDomain<'a, F: Field> {
 }
 
 #[cfg(test)]
-use std::{
-    env,
-    time::Instant,
-};
+use std::{env, time::Instant};
 
 #[test]
 fn test_rotate() {
@@ -874,7 +879,13 @@ fn test_lagrange_vecs_to_extended() {
         // poly under extended representation.
         poly.resize(domain.extended_len() as usize, Scalar::zero());
         let data = domain.get_fft_data(poly.len());
-        best_fft(&mut poly, domain.extended_omega, domain.extended_k, data, false);
+        best_fft(
+            &mut poly,
+            domain.extended_omega,
+            domain.extended_k,
+            data,
+            false,
+        );
         let poly = {
             let mut p = domain.empty_extended();
             p.values = poly;
@@ -926,7 +937,13 @@ fn bench_lagrange_vecs_to_extended() {
         // poly under extended representation.
         poly.resize(domain.extended_len() as usize, Scalar::zero());
         let data = domain.get_fft_data(poly.len());
-        best_fft(&mut poly, domain.extended_omega, domain.extended_k, data, false);
+        best_fft(
+            &mut poly,
+            domain.extended_omega,
+            domain.extended_k,
+            data,
+            false,
+        );
         let poly = {
             let mut p = domain.empty_extended();
             p.values = poly;

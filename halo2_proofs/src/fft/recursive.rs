@@ -145,7 +145,9 @@ impl<F: arithmetic::Field> FFTData<F> {
     }
 
     /// Return private field `n`
-    pub fn get_n(&self) -> usize { self.n }
+    pub fn get_n(&self) -> usize {
+        self.n
+    }
 }
 
 /// Radix 2 butterfly

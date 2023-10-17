@@ -975,14 +975,15 @@ impl<C: CurveAffine> Evaluator<C> {
     }
 
     fn compute_cluster_idx(degree: usize, max_cluster_idx: usize) -> usize {
-        let mut idx = if degree != 0 {
-            (31 - (degree as u32).leading_zeros()) as usize
-        } else {
-            0
-        };
-        if 1 << idx < degree {
-            idx = idx + 1;
+        let mut idx = 0;
+        if degree != 0 {
+            // same as unstable degree.ilog()
+            idx = (degree as f32).log2().floor() as usize;
+            if !degree.is_power_of_two() {
+                idx += 1;
+            }
         }
+
         std::cmp::min(max_cluster_idx, idx)
     }
 }
@@ -1250,11 +1251,21 @@ pub fn evaluate<F: Field, B: Basis>(
 }
 
 mod test {
+    use halo2curves::{secp256k1::Secp256k1Affine, CurveAffine};
+
     #[test]
     #[should_panic(expected = "attempt to subtract with overflow")]
     fn compute_cluster_idx_underflow() {
         let degree = 0;
         let idx = (31 - (degree as u32).leading_zeros()) as usize;
         println!("idx = {}", idx);
+    }
+
+    #[test]
+    fn compute_cluster_idx_new() {
+        for degree in 0..17usize {
+            let idx = super::Evaluator::<Secp256k1Affine>::compute_cluster_idx(degree, 10);
+            println!("degree = {}, idx = {}", degree, idx);
+        }
     }
 }

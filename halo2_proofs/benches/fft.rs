@@ -23,7 +23,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 .collect::<Vec<_>>();
 
             b.iter(|| {
-                best_fft(&mut a, omega, k as u32, data, false);
+                best_fft(&mut a, omega, k, data, false);
             });
         });
     }

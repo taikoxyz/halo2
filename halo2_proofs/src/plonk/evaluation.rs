@@ -691,7 +691,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                 [compute_part_idx_in_cluster(part_idx, running_prod_cluster)],
                             |values, start| {
                                 let mut beta_term = current_extended_omega
-                                    * omega.pow_vartime(&[start as u64, 0, 0, 0]);
+                                    * omega.pow_vartime([start as u64, 0, 0, 0]);
                                 for (i, value) in values.iter_mut().enumerate() {
                                     let idx = start + i;
                                     let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
@@ -978,7 +978,7 @@ impl<C: CurveAffine> Evaluator<C> {
         let mut idx = 0;
         if degree != 0 {
             // same as unstable degree.ilog()
-            idx = (degree as f32).log2().floor() as usize;
+            idx = (31 - (degree as u32).leading_zeros()) as usize;
             if !degree.is_power_of_two() {
                 idx += 1;
             }

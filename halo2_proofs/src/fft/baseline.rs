@@ -21,7 +21,7 @@ use crate::{
 fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
     let threads = multicore::current_num_threads();
     let log_threads = log2_floor(threads);
-    let n = a.len() as usize;
+    let n = a.len();
     assert_eq!(n, 1 << log_n);
 
     for k in 0..n {
@@ -33,7 +33,7 @@ fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_
 
     //let start = start_measure(format!("twiddles {} ({})", a.len(), threads), false);
     // precompute twiddle factors
-    let twiddles: Vec<_> = (0..(n / 2) as usize)
+    let twiddles: Vec<_> = (0..(n / 2))
         .scan(Scalar::ONE, |w, _| {
             let tw = *w;
             *w *= &omega;
@@ -44,7 +44,7 @@ fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_
 
     if log_n <= log_threads {
         let mut chunk = 2_usize;
-        let mut twiddle_chunk = (n / 2) as usize;
+        let mut twiddle_chunk = n / 2;
         for _ in 0..log_n {
             a.chunks_mut(chunk).for_each(|coeffs| {
                 let (left, right) = coeffs.split_at_mut(chunk / 2);

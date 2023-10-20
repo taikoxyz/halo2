@@ -260,6 +260,6 @@ mod tests {
             .map(|_| Scalar::random(OsRng))
             .collect::<Vec<_>>();
 
-        best_fft(&mut a, omega, k as u32, data, false);
+        best_fft(&mut a, omega, k, data, false);
     }
 }

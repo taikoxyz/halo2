@@ -551,7 +551,7 @@ where
     let vanishing = vanishing.construct(params, domain, h_poly, &mut rng, transcript)?;
 
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
-    let xn = x.pow(&[params.n() as u64, 0, 0, 0]);
+    let xn = x.pow([params.n(), 0, 0, 0]);
 
     let start = start_measure("instance eval_polynomial", false);
     if P::QUERY_INSTANCE {

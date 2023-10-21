@@ -30,7 +30,9 @@ pub struct CircuitCost<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> {
     pub advice_columns: usize,
     /// Number of direct queries for each column type.
     pub instance_queries: usize,
+    ///
     pub advice_queries: usize,
+    ///
     pub fixed_queries: usize,
     /// Number of lookup arguments.
     pub lookups: usize,
@@ -38,8 +40,8 @@ pub struct CircuitCost<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> {
     pub permutation_cols: usize,
     /// Number of distinct sets of points in the multiopening argument.
     pub point_sets: usize,
-
-    _marker: PhantomData<(G, ConcreteCircuit)>,
+    ///
+    pub _marker: PhantomData<(G, ConcreteCircuit)>,
 }
 
 struct Assembly {

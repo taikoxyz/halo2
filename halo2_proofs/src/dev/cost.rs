@@ -304,8 +304,10 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
 /// (commitments, evaluations)
 #[derive(Debug)]
 pub struct ProofContribution {
-    commitments: usize,
-    evaluations: usize,
+    ///
+    pub commitments: usize,
+    ///
+    pub evaluations: usize,
 }
 
 impl ProofContribution {

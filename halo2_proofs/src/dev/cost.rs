@@ -23,25 +23,23 @@ use crate::{
 #[derive(Debug)]
 pub struct CircuitCost<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> {
     /// Power-of-2 bound on the number of rows in the circuit.
-    pub k: usize,
+    k: usize,
     /// Maximum degree of the circuit.
-    pub max_deg: usize,
+    max_deg: usize,
     /// Number of advice columns.
-    pub advice_columns: usize,
+    advice_columns: usize,
     /// Number of direct queries for each column type.
-    pub instance_queries: usize,
-    ///
-    pub advice_queries: usize,
-    ///
-    pub fixed_queries: usize,
+    instance_queries: usize,
+    advice_queries: usize,
+    fixed_queries: usize,
     /// Number of lookup arguments.
-    pub lookups: usize,
+    lookups: usize,
     /// Number of columns in the global permutation.
-    pub permutation_cols: usize,
+    permutation_cols: usize,
     /// Number of distinct sets of points in the multiopening argument.
     pub point_sets: usize,
-    ///
-    pub _marker: PhantomData<(G, ConcreteCircuit)>,
+
+    _marker: PhantomData<(G, ConcreteCircuit)>,
 }
 
 struct Assembly {

@@ -99,8 +99,8 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         {
             // Compute the evaluations of t(X) = X^n - 1 in the coset evaluation domain.
             // We don't have to compute all of them, because it will repeat.
-            let orig = F::ZETA.pow_vartime(&[n as u64, 0, 0, 0]);
-            let step = extended_omega.pow_vartime(&[n as u64, 0, 0, 0]);
+            let orig = F::ZETA.pow_vartime([n, 0, 0, 0]);
+            let step = extended_omega.pow_vartime([n, 0, 0, 0]);
             let mut cur = orig;
             loop {
                 t_evaluations.push(cur);
@@ -192,7 +192,7 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
         &self,
         values: Vec<Polynomial<F, LagrangeCoeff>>,
     ) -> Polynomial<F, ExtendedLagrangeCoeff> {
-        assert_eq!(values.len(), (self.extended_len() >> self.k) as usize);
+        assert_eq!(values.len(), (self.extended_len() >> self.k));
         assert_eq!(values[0].len(), self.n as usize);
 
         // transpose the values in parallel
@@ -474,15 +474,21 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
 
             parallelize(&mut result[0..(self.n << i) as usize], |result, start| {
                 for (other, current) in result.iter_mut().zip(a_poly[start..].iter()) {
-                    * other += current;
+                    *other += current;
                 }
             });
         }
         let data = self.get_fft_data(result.len());
-        best_fft(&mut result, self.extended_omega, self.extended_k, data, false);
+        best_fft(
+            &mut result,
+            self.extended_omega,
+            self.extended_k,
+            data,
+            false,
+        );
         parallelize(&mut result_poly.values, |values, start| {
             for (value, other) in values.iter_mut().zip(result[start..].iter()) {
-                * value += other;
+                *value += other;
             }
         });
         result_poly
@@ -541,9 +547,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     ///
     fn distribute_powers(&self, a: &mut [F], c: F) {
         parallelize(a, |a, index| {
-            let mut c_power = c.pow_vartime(&[index as u64, 0, 0, 0]);
+            let mut c_power = c.pow_vartime([index as u64, 0, 0, 0]);
             for a in a {
-                * a *= c_power;
+                *a *= c_power;
                 c_power = c_power * c;
             }
         });
@@ -607,11 +613,11 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     pub fn rotate_omega(&self, value: F, rotation: Rotation) -> F {
         let mut point = value;
         if rotation.0 >= 0 {
-            point *= &self.get_omega().pow_vartime(&[rotation.0 as u64]);
+            point *= &self.get_omega().pow_vartime([rotation.0 as u64]);
         } else {
             point *= &self
                 .get_omega_inv()
-                .pow_vartime(&[(rotation.0 as i64).unsigned_abs()]);
+                .pow_vartime([(rotation.0 as i64).unsigned_abs()]);
         }
         point
     }
@@ -687,7 +693,9 @@ impl<F: WithSmallOrderMulGroup<3>> EvaluationDomain<F> {
     }
 
     /// Get the private field `n`
-    pub fn get_n(&self) -> u64 { self.n }
+    pub fn get_n(&self) -> u64 {
+        self.n
+    }
 
     /// Get the private `fft_data`
     pub fn get_fft_data(&self, l: usize) -> &FFTData<F> {
@@ -709,10 +717,7 @@ pub struct PinnedEvaluationDomain<'a, F: Field> {
 }
 
 #[cfg(test)]
-use std::{
-    env,
-    time::Instant,
-};
+use std::{env, time::Instant};
 
 #[test]
 fn test_rotate() {
@@ -766,7 +771,7 @@ fn test_l_i() {
     let mut l = vec![];
     let mut points = vec![];
     for i in 0..8 {
-        points.push(domain.omega.pow(&[i, 0, 0, 0]));
+        points.push(domain.omega.pow([i, 0, 0, 0]));
     }
     for i in 0..8 {
         let mut l_i = vec![Scalar::zero(); 8];
@@ -776,7 +781,7 @@ fn test_l_i() {
     }
 
     let x = Scalar::random(OsRng);
-    let xn = x.pow(&[8, 0, 0, 0]);
+    let xn = x.pow([8, 0, 0, 0]);
 
     let evaluations = domain.l_i_range(x, xn, -7..=7);
     for i in 0..8 {
@@ -872,9 +877,15 @@ fn test_lagrange_vecs_to_extended() {
             .collect();
         poly_lagrange_vecs.push(transposed_poly);
         // poly under extended representation.
-        poly.resize(domain.extended_len() as usize, Scalar::zero());
+        poly.resize(domain.extended_len(), Scalar::zero());
         let data = domain.get_fft_data(poly.len());
-        best_fft(&mut poly, domain.extended_omega, domain.extended_k, data, false);
+        best_fft(
+            &mut poly,
+            domain.extended_omega,
+            domain.extended_k,
+            data,
+            false,
+        );
         let poly = {
             let mut p = domain.empty_extended();
             p.values = poly;
@@ -924,9 +935,15 @@ fn bench_lagrange_vecs_to_extended() {
             .collect();
         poly_lagrange_vecs.push(transposed_poly);
         // poly under extended representation.
-        poly.resize(domain.extended_len() as usize, Scalar::zero());
+        poly.resize(domain.extended_len(), Scalar::zero());
         let data = domain.get_fft_data(poly.len());
-        best_fft(&mut poly, domain.extended_omega, domain.extended_k, data, false);
+        best_fft(
+            &mut poly,
+            domain.extended_omega,
+            domain.extended_k,
+            data,
+            false,
+        );
         let poly = {
             let mut p = domain.empty_extended();
             p.values = poly;

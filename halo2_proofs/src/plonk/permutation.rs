@@ -159,7 +159,6 @@ where
 impl<C: CurveAffine> ProvingKey<C> {
     /// Gets the total number of bytes in the serialization of `self`
     pub(super) fn bytes_length(&self) -> usize {
-        polynomial_slice_byte_length(&self.permutations)
-            + polynomial_slice_byte_length(&self.polys)
+        polynomial_slice_byte_length(&self.permutations) + polynomial_slice_byte_length(&self.polys)
     }
 }

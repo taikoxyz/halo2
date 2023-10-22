@@ -210,7 +210,7 @@ pub fn best_fft<Scalar: Field, G: FftGroup<Scalar>>(
 
 /// Convert coefficient bases group elements to lagrange basis by inverse FFT.
 pub fn g_to_lagrange<C: CurveAffine>(g_projective: Vec<C::Curve>, k: u32) -> Vec<C> {
-    let n_inv = C::Scalar::TWO_INV.pow_vartime(&[k as u64, 0, 0, 0]);
+    let n_inv = C::Scalar::TWO_INV.pow_vartime([k as u64, 0, 0, 0]);
     let omega = C::Scalar::ROOT_OF_UNITY;
     let mut omega_inv = C::Scalar::ROOT_OF_UNITY_INV;
     for _ in k..C::Scalar::S {
@@ -221,13 +221,7 @@ pub fn g_to_lagrange<C: CurveAffine>(g_projective: Vec<C::Curve>, k: u32) -> Vec
     let n = g_lagrange_projective.len();
     let fft_data = FFTData::new(n, omega, omega_inv);
 
-    best_fft(
-        &mut g_lagrange_projective,
-        omega_inv,
-        k,
-        &fft_data,
-        false,
-    );
+    best_fft(&mut g_lagrange_projective, omega_inv, k, &fft_data, false);
     parallelize(&mut g_lagrange_projective, |g, _| {
         for g in g.iter_mut() {
             *g *= n_inv;
@@ -265,7 +259,7 @@ pub fn eval_polynomial<F: Field>(poly: &[F], point: F) -> F {
             {
                 scope.spawn(move |_| {
                     let start = chunk_idx * chunk_size;
-                    out[0] = evaluate(poly, point) * point.pow_vartime(&[start as u64, 0, 0, 0]);
+                    out[0] = evaluate(poly, point) * point.pow_vartime([start as u64, 0, 0, 0]);
                 });
             }
         });
@@ -316,7 +310,7 @@ where
 pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
     let n = v.len();
     let num_threads = multicore::current_num_threads();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
         chunk = 1;
     }

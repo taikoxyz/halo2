@@ -434,7 +434,7 @@ impl<C: CurveAffine> Evaluator<C> {
             .enumerate()
             .take(num_clusters)
         {
-             cluster.resize(1 << cluster_idx, domain.empty_lagrange());
+            cluster.resize(1 << cluster_idx, domain.empty_lagrange());
         }
 
         // Calculate the quotient polynomial for each part
@@ -538,7 +538,6 @@ impl<C: CurveAffine> Evaluator<C> {
                 }
                 constraint_idx += self.num_custom_gate_constraints;
                 stop_measure(start);
-
 
                 // Permutations
                 let start = start_measure("permutations", false);
@@ -692,7 +691,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                 [compute_part_idx_in_cluster(part_idx, running_prod_cluster)],
                             |values, start| {
                                 let mut beta_term = current_extended_omega
-                                    * omega.pow_vartime(&[start as u64, 0, 0, 0]);
+                                    * omega.pow_vartime([start as u64, 0, 0, 0]);
                                 for (i, value) in values.iter_mut().enumerate() {
                                     let idx = start + i;
                                     let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
@@ -976,10 +975,15 @@ impl<C: CurveAffine> Evaluator<C> {
     }
 
     fn compute_cluster_idx(degree: usize, max_cluster_idx: usize) -> usize {
-        let mut idx = (31 - (degree as u32).leading_zeros()) as usize;
-        if 1 << idx < degree {
-            idx = idx + 1;
+        let mut idx = 0;
+        if degree != 0 {
+            // same as unstable degree.ilog()
+            idx = (31 - (degree as u32).leading_zeros()) as usize;
+            if !degree.is_power_of_two() {
+                idx += 1;
+            }
         }
+
         std::cmp::min(max_cluster_idx, idx)
     }
 }
@@ -1244,4 +1248,26 @@ pub fn evaluate<F: Field, B: Basis>(
         }
     });
     values
+}
+
+mod test {
+    use halo2curves::{secp256k1::Secp256k1Affine, CurveAffine};
+
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "attempt to subtract with overflow")]
+    fn compute_cluster_idx_underflow() {
+        let degree = 0u32;
+        let idx = (31 - degree.leading_zeros()) as usize;
+        println!("idx = {}", idx);
+    }
+
+    #[test]
+    #[ignore]
+    fn compute_cluster_idx_new() {
+        for degree in 0..17usize {
+            let idx = super::Evaluator::<Secp256k1Affine>::compute_cluster_idx(degree, 10);
+            println!("degree = {}, idx = {}", degree, idx);
+        }
+    }
 }

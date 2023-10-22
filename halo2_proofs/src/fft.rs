@@ -25,7 +25,7 @@ pub fn fft<Scalar: Field, G: FftGroup<Scalar>>(
             log_info("=== Parallel FFT ===".to_string());
             parallel::fft(a, omega, log_n, data, inverse)
         }
-        Ok(fft_impl) if fft_impl == "baseline"=> {
+        Ok(fft_impl) if fft_impl == "baseline" => {
             log_info("=== Baseline FFT ===".to_string());
             baseline::fft(a, omega, log_n, data, inverse)
         }
@@ -45,17 +45,17 @@ pub fn fft<Scalar: Field, G: FftGroup<Scalar>>(
 
 #[cfg(test)]
 mod tests {
-    use std::{time::Instant, env::var};
+    use std::{env::var, time::Instant};
 
     use ff::Field;
     use halo2curves::bn256::Fr as Scalar;
     use rand_core::OsRng;
 
     use crate::{
+        arithmetic::{best_fft, eval_polynomial, lagrange_interpolate},
         fft::{self, recursive::FFTData},
         multicore,
-        arithmetic::{eval_polynomial, lagrange_interpolate, best_fft},
-        plonk::{start_measure, log_info, stop_measure},
+        plonk::{log_info, start_measure, stop_measure},
         poly::EvaluationDomain,
     };
 
@@ -66,7 +66,6 @@ mod tests {
             .parse()
             .expect("Cannot parse DEGREE env var as usize")
     }
-
 
     #[test]
     fn test_fft_parallel() {
@@ -126,18 +125,30 @@ mod tests {
         let num_threads = multicore::current_num_threads();
 
         let mut a = input.clone();
-        let l_a= a.len();
+        let l_a = a.len();
         let start = start_measure(format!("best fft {} ({})", a.len(), num_threads), false);
-        fft::baseline::fft(&mut a, domain.get_omega(), k, domain.get_fft_data(l_a), false);
+        fft::baseline::fft(
+            &mut a,
+            domain.get_omega(),
+            k,
+            domain.get_fft_data(l_a),
+            false,
+        );
         stop_measure(start);
 
         let mut b = input;
-        let l_b= b.len();
+        let l_b = b.len();
         let start = start_measure(
             format!("recursive fft {} ({})", a.len(), num_threads),
             false,
         );
-        fft::recursive::fft(&mut b, domain.get_omega(), k, domain.get_fft_data(l_b), false);
+        fft::recursive::fft(
+            &mut b,
+            domain.get_omega(),
+            k,
+            domain.get_fft_data(l_b),
+            false,
+        );
         stop_measure(start);
 
         for i in 0..n {
@@ -165,7 +176,13 @@ mod tests {
             format!("baseline  fft {} ({})", data_baseline.len(), num_threads),
             false,
         );
-        fft::baseline::fft(&mut data_baseline, domain.get_omega(), k, domain.get_fft_data(l_baseline), false);
+        fft::baseline::fft(
+            &mut data_baseline,
+            domain.get_omega(),
+            k,
+            domain.get_fft_data(l_baseline),
+            false,
+        );
         stop_measure(start);
 
         let mut data_parallel = input.clone();
@@ -174,7 +191,13 @@ mod tests {
             format!("parallel  fft {} ({})", data_parallel.len(), num_threads),
             false,
         );
-        fft::parallel::fft(&mut data_parallel, domain.get_omega(), k, domain.get_fft_data(l_parallel), false);
+        fft::parallel::fft(
+            &mut data_parallel,
+            domain.get_omega(),
+            k,
+            domain.get_fft_data(l_parallel),
+            false,
+        );
         stop_measure(start);
 
         let mut data_recursive = input;
@@ -215,7 +238,13 @@ mod tests {
         let num_threads = multicore::current_num_threads();
 
         let start = start_measure(format!("fft {} ({})", input.len(), num_threads), false);
-        fft::fft(&mut input, domain.get_omega(), k, domain.get_fft_data(l), false);
+        fft::fft(
+            &mut input,
+            domain.get_omega(),
+            k,
+            domain.get_fft_data(l),
+            false,
+        );
         stop_measure(start);
     }
 
@@ -223,13 +252,14 @@ mod tests {
     fn test_mem_leak() {
         let j = 1;
         let k = 3;
-        let domain = EvaluationDomain::new(j,k);
+        let domain = EvaluationDomain::new(j, k);
         let omega = domain.get_omega();
-        let l = 1<<k;
+        let l = 1 << k;
         let data = domain.get_fft_data(l);
-        let mut a = (0..(1 << k)).map(|_| Scalar::random(OsRng)).collect::<Vec<_>>();
+        let mut a = (0..(1 << k))
+            .map(|_| Scalar::random(OsRng))
+            .collect::<Vec<_>>();
 
-        best_fft(&mut a, omega, k as u32, data, false);
-}
-
+        best_fft(&mut a, omega, k, data, false);
+    }
 }

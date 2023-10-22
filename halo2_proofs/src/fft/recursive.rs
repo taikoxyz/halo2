@@ -84,7 +84,7 @@ impl<F: arithmetic::Field> Default for FFTData<F> {
 impl<F: arithmetic::Field> FFTData<F> {
     /// Create FFT data
     pub fn new(n: usize, omega: F, omega_inv: F) -> Self {
-        let stages = get_stages(n as usize, vec![]);
+        let stages = get_stages(n, vec![]);
         let mut f_twiddles = vec![];
         let mut inv_twiddles = vec![];
         let mut scratch = vec![F::ZERO; n];
@@ -104,7 +104,7 @@ impl<F: arithmetic::Field> FFTData<F> {
             // Twiddles
             parallelize(twiddles, |twiddles, start| {
                 let w_m = o;
-                let mut w = o.pow_vartime(&[start as u64, 0, 0, 0]);
+                let mut w = o.pow_vartime([start as u64, 0, 0, 0]);
                 for value in twiddles.iter_mut() {
                     *value = w;
                     w *= w_m;
@@ -145,7 +145,9 @@ impl<F: arithmetic::Field> FFTData<F> {
     }
 
     /// Return private field `n`
-    pub fn get_n(&self) -> usize { self.n }
+    pub fn get_n(&self) -> usize {
+        self.n
+    }
 }
 
 /// Radix 2 butterfly
@@ -180,9 +182,9 @@ fn butterfly_2_parallel<Scalar: Field, G: FftGroup<Scalar>>(
     num_threads: usize,
 ) {
     let n = out.len();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
-        chunk = n as usize;
+        chunk = n;
     }
 
     multicore::scope(|scope| {
@@ -273,9 +275,9 @@ fn butterfly_4_parallel<Scalar: Field, G: FftGroup<Scalar>>(
     let j = twiddles[twiddles.len() - 1];
 
     let n = out.len();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
-        chunk = n as usize;
+        chunk = n;
     }
     multicore::scope(|scope| {
         //let mut parts: Vec<&mut [F]> = out.chunks_mut(4).collect();
@@ -436,9 +438,9 @@ fn parallelize_count<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(
     f: F,
 ) {
     let n = v.len();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
-        chunk = n as usize;
+        chunk = n;
     }
 
     multicore::scope(|scope| {

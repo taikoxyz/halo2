@@ -21,7 +21,7 @@ pub const SPARSE_TWIDDLE_DEGREE: u32 = 10;
 fn best_fft_opt<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
     let threads = multicore::current_num_threads();
     let log_split = log2_floor(threads) as usize;
-    let n = a.len() as usize;
+    let n = a.len();
     let sub_n = n >> log_split;
     let split_m = 1 << log_split;
 
@@ -39,13 +39,13 @@ fn serial_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, lo
     for k in 0..n as usize {
         let rk = arithmetic::bitreverse(k, log_n as usize);
         if k < rk {
-            a.swap(rk as usize, k as usize);
+            a.swap(rk, k);
         }
     }
 
     let mut m = 1;
     for _ in 0..log_n {
-        let w_m: Scalar = omega.pow_vartime(&[u64::from(n / (2 * m)), 0, 0, 0]);
+        let w_m: Scalar = omega.pow_vartime([u64::from(n / (2 * m)), 0, 0, 0]);
 
         let mut k = 0;
         while k < n {
@@ -120,12 +120,12 @@ fn split_radix_fft<Scalar: Field, G: FftGroup<Scalar>>(
     let tmp_filler_val = tmp[0];
     let mut t1 = vec![tmp_filler_val; split_m];
     for i in 0..split_m {
-        t1[arithmetic::bitreverse(i, log_split)] = a[(i * sub_n + sub_fft_offset)];
+        t1[arithmetic::bitreverse(i, log_split)] = a[i * sub_n + sub_fft_offset];
     }
     serial_split_fft(&mut t1, twiddle_lut, sub_n, log_split as u32);
 
     let sparse_degree = SPARSE_TWIDDLE_DEGREE;
-    let omega_idx = sub_fft_offset as usize;
+    let omega_idx = sub_fft_offset;
     let low_idx = omega_idx % (1 << sparse_degree);
     let high_idx = omega_idx >> sparse_degree;
     let mut omega = twiddle_lut[low_idx];
@@ -154,7 +154,7 @@ fn generate_twiddle_lookup_table<F: Field>(
     if is_lut_len_large {
         let mut twiddle_lut = vec![F::ZERO; (1 << log_n) as usize];
         parallelize(&mut twiddle_lut, |twiddle_lut, start| {
-            let mut w_n = omega.pow_vartime(&[start as u64, 0, 0, 0]);
+            let mut w_n = omega.pow_vartime([start as u64, 0, 0, 0]);
             for twiddle_lut in twiddle_lut.iter_mut() {
                 *twiddle_lut = w_n;
                 w_n = w_n * omega;
@@ -166,22 +166,22 @@ fn generate_twiddle_lookup_table<F: Field>(
     // sparse
     let low_degree_lut_len = 1 << sparse_degree;
     let high_degree_lut_len = 1 << (log_n - sparse_degree - without_last_level as u32);
-    let mut twiddle_lut = vec![F::ZERO; (low_degree_lut_len + high_degree_lut_len) as usize];
+    let mut twiddle_lut = vec![F::ZERO; low_degree_lut_len + high_degree_lut_len];
     parallelize(
         &mut twiddle_lut[..low_degree_lut_len],
         |twiddle_lut, start| {
-            let mut w_n = omega.pow_vartime(&[start as u64, 0, 0, 0]);
+            let mut w_n = omega.pow_vartime([start as u64, 0, 0, 0]);
             for twiddle_lut in twiddle_lut.iter_mut() {
                 *twiddle_lut = w_n;
                 w_n = w_n * omega;
             }
         },
     );
-    let high_degree_omega = omega.pow_vartime(&[(1 << sparse_degree) as u64, 0, 0, 0]);
+    let high_degree_omega = omega.pow_vartime([(1 << sparse_degree) as u64, 0, 0, 0]);
     parallelize(
         &mut twiddle_lut[low_degree_lut_len..],
         |twiddle_lut, start| {
-            let mut w_n = high_degree_omega.pow_vartime(&[start as u64, 0, 0, 0]);
+            let mut w_n = high_degree_omega.pow_vartime([start as u64, 0, 0, 0]);
             for twiddle_lut in twiddle_lut.iter_mut() {
                 *twiddle_lut = w_n;
                 w_n = w_n * high_degree_omega;
@@ -193,12 +193,12 @@ fn generate_twiddle_lookup_table<F: Field>(
 
 /// The parallel implementation
 fn parallel_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, log_n: u32) {
-    let n = a.len() as usize;
+    let n = a.len();
     assert_eq!(n, 1 << log_n);
 
     let log_split = log2_floor(multicore::current_num_threads()) as usize;
     let split_m = 1 << log_split;
-    let sub_n = n >> log_split as usize;
+    let sub_n = n >> log_split;
     let twiddle_lut = generate_twiddle_lookup_table(omega, log_n, SPARSE_TWIDDLE_DEGREE, true);
 
     // split fft
@@ -229,7 +229,7 @@ fn parallel_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
     });
 
     // sub fft
-    let new_omega = omega.pow_vartime(&[split_m as u64, 0, 0, 0]);
+    let new_omega = omega.pow_vartime([split_m as u64, 0, 0, 0]);
     multicore::scope(|scope| {
         for a in a.chunks_mut(sub_n) {
             scope.spawn(move |_| {
@@ -259,9 +259,9 @@ fn parallel_fft<Scalar: Field, G: FftGroup<Scalar>>(a: &mut [G], omega: Scalar, 
 fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
     let n = v.len();
     let num_threads = multicore::current_num_threads();
-    let mut chunk = (n as usize) / num_threads;
+    let mut chunk = n / num_threads;
     if chunk < num_threads {
-        chunk = n as usize;
+        chunk = n;
     }
 
     multicore::scope(|scope| {

@@ -303,7 +303,7 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
 
 /// (commitments, evaluations)
 #[derive(Debug)]
-struct ProofContribution {
+pub struct ProofContribution {
     commitments: usize,
     evaluations: usize,
 }
@@ -368,14 +368,22 @@ impl<G: PrimeGroup> From<MarginalProofSize<G>> for usize {
 /// The size of a Halo 2 proof, broken down into its contributing factors.
 #[derive(Debug)]
 pub struct ProofSize<G: PrimeGroup> {
-    instance: ProofContribution,
-    advice: ProofContribution,
-    fixed: ProofContribution,
-    lookups: ProofContribution,
-    equality: ProofContribution,
-    vanishing: ProofContribution,
-    multiopen: ProofContribution,
-    polycomm: ProofContribution,
+    ///
+    pub instance: ProofContribution,
+    ///
+    pub advice: ProofContribution,
+    ///
+    pub fixed: ProofContribution,
+    ///
+    pub lookups: ProofContribution,
+    ///
+    pub equality: ProofContribution,
+    ///
+    pub vanishing: ProofContribution,
+    ///
+    pub multiopen: ProofContribution,
+    ///
+    pub polycomm: ProofContribution,
     _marker: PhantomData<G>,
 }
 

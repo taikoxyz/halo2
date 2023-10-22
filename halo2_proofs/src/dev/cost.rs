@@ -230,7 +230,10 @@ impl<G: PrimeGroup, ConcreteCircuit: Circuit<G::Scalar>> CircuitCost<G, Concrete
 
     /// Returns the marginal proof size per instance of this circuit.
     pub fn marginal_proof_size(&self) -> MarginalProofSize<G> {
-        let chunks = self.permutation_chunks();
+        let mut chunks = self.permutation_chunks();
+        if chunks == 0 {
+            chunks = 1;
+        }
 
         MarginalProofSize {
             // Cells:

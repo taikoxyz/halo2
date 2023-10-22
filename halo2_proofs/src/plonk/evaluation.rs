@@ -1258,7 +1258,7 @@ mod test {
     #[should_panic(expected = "attempt to subtract with overflow")]
     fn compute_cluster_idx_underflow() {
         let degree = 0u32;
-        let idx = (31 - (degree as u32).leading_zeros()) as usize;
+        let idx = (31 - degree.leading_zeros()) as usize;
         println!("idx = {}", idx);
     }
 

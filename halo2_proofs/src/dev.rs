@@ -322,6 +322,10 @@ impl<F: Field> MockProver<F> {
     fn in_phase<P: Phase>(&self, phase: P) -> bool {
         self.current_phase == phase.to_sealed()
     }
+    ///
+    pub fn cs(&self) -> &ConstraintSystem<F> {
+        &self.cs
+    }
 }
 
 impl<F: Field> Assignment<F> for MockProver<F> {

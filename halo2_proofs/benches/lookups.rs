@@ -132,7 +132,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             || format!("offset {}", offset),
                             config.advice,
                             offset as usize,
-                            || Value::known(F::from((offset % 256))),
+                            || Value::known(F::from(offset % 256)),
                         )?;
                     }
                     for offset in 1u64..(1 << 10) {
@@ -141,7 +141,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                             || format!("offset {}", offset),
                             config.other_advice,
                             offset as usize - 1,
-                            || Value::known(F::from((offset % 256))),
+                            || Value::known(F::from(offset % 256)),
                         )?;
                     }
                     Ok(())
@@ -160,7 +160,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         (params, pk)
     }
 
-    fn prover(k: u32, params: &ParamsKZG<Bn256>, pk: &ProvingKey<G1Affine>) -> Vec<u8> {
+    fn prover(_k: u32, params: &ParamsKZG<Bn256>, pk: &ProvingKey<G1Affine>) -> Vec<u8> {
         let rng = OsRng;
 
         let circuit: MyCircuit<<Bn256 as Engine>::Scalar> = MyCircuit {

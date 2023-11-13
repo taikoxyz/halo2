@@ -67,7 +67,7 @@ impl<F: FieldExt> Argument<F> {
         fixed_values: &'a [Polynomial<C::Scalar, LagrangeCoeff>],
         instance_values: &'a [Polynomial<C::Scalar, LagrangeCoeff>],
         challenges: &'a [C::Scalar],
-        mut rng: R, // in case we want to blind (do we actually need zk?)
+        mut _rng: R, // in case we want to blind (do we actually need zk?)
         transcript: &mut T,
     ) -> Result<Prepared<C>, Error>
     where
@@ -153,7 +153,7 @@ impl<F: FieldExt> Argument<F> {
             }
 
             // check sums
-            let alpha = C::Scalar::random(&mut rng);
+            let alpha = C::Scalar::random(&mut _rng);
             let cs_input_sum =
                 |compressed_input_expression: &Polynomial<C::Scalar, LagrangeCoeff>| {
                     let mut lhs_sum = C::Scalar::zero();

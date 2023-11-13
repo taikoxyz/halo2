@@ -53,7 +53,8 @@ pub enum ValueSource {
     /// beta
     Beta(),
     /// gamma
-    Gamma(),
+    // only used by the old halo2 lookup scheme
+    // Gamma(),
     /// theta
     Theta(),
     /// y
@@ -80,7 +81,7 @@ impl ValueSource {
         instance_values: &[Polynomial<F, B>],
         challenges: &[F],
         beta: &F,
-        gamma: &F,
+        _gamma: &F,
         theta: &F,
         y: &F,
         previous_value: &F,
@@ -99,7 +100,7 @@ impl ValueSource {
             }
             ValueSource::Challenge(index) => challenges[*index],
             ValueSource::Beta() => *beta,
-            ValueSource::Gamma() => *gamma,
+            // ValueSource::Gamma() => *gamma,
             ValueSource::Theta() => *theta,
             ValueSource::Y() => *y,
             ValueSource::PreviousValue() => *previous_value,

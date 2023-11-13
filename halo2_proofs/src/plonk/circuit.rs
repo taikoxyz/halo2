@@ -1564,11 +1564,11 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup(
         &mut self,
         // FIXME use name in debug messages
-        name: &'static str,
+        _name: &'static str,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, TableColumn)>,
     ) {
         let mut cells = VirtualCells::new(self);
-        let table_map: Vec<_> = table_map(&mut cells)
+        let (input_expressions, table_expressions): (Vec<_>, Vec<_>) = table_map(&mut cells)
             .into_iter()
             .map(|(input, table)| {
                 if input.contains_simple_selector() {
@@ -1579,10 +1579,8 @@ impl<F: Field> ConstraintSystem<F> {
 
                 (input, table)
             })
-            .collect();
+            .unzip();
 
-        let (input_expressions, table_expressions): (Vec<_>, Vec<_>) =
-            table_map.into_iter().unzip();
         let table_expressions_identifier = table_expressions
             .iter()
             .fold(String::new(), |string, expr| string + &expr.identifier());
@@ -1642,12 +1640,12 @@ impl<F: Field> ConstraintSystem<F> {
             for input in inputs.iter().skip(1) {
                 let cur_input_degree = input.iter().map(|expr| expr.degree()).max().unwrap();
                 let mut indicator = false;
-                for i in 0..args.len() {
+                for arg in args.iter_mut() {
                     // try to fit input in one of the args
-                    let cur_argument_degree = args[i].required_degree();
+                    let cur_argument_degree = arg.required_degree();
                     let new_potential_degree = cur_argument_degree + cur_input_degree;
                     if new_potential_degree <= minimum_degree {
-                        args[i].inputs_expressions.push(input.clone());
+                        arg.inputs_expressions.push(input.clone());
                         indicator = true;
                         break;
                     }
@@ -1674,7 +1672,7 @@ impl<F: Field> ConstraintSystem<F> {
     pub fn lookup_any(
         &mut self,
         // FIXME use name in debug messages
-        name: &'static str,
+        _name: &'static str,
         table_map: impl FnOnce(&mut VirtualCells<'_, F>) -> Vec<(Expression<F>, Expression<F>)>,
     ) {
         let mut cells = VirtualCells::new(self);

@@ -445,7 +445,7 @@ fn render_constraint_not_satisfied<F: Field>(
 /// ```
 fn render_lookup<F: FieldExt>(
     prover: &MockProver<F>,
-    name: &str,
+    _name: &str,
     lookup_index: usize,
     location: &FailureLocation,
 ) {

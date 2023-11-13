@@ -1,8 +1,6 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
-use assert_matches::assert_matches;
-use ff::PrimeField;
 use halo2_proofs::arithmetic::{Field, FieldExt};
 #[cfg(feature = "parallel_syn")]
 use halo2_proofs::circuit::Region;

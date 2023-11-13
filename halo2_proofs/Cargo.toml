@@ -97,6 +97,7 @@ parallel_syn = []
 phase-check = []
 profile = ["ark-std/print-trace"]
 counter = ["lazy_static"]
+mock-batch-inv = []
 
 [lib]
 bench = false

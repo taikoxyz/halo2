@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use blake2b_simd::blake2b;
-use ff::Field;
+use ff::{BatchInvert, Field};
 
 use crate::plonk::permutation::keygen::Assembly;
 use crate::plonk::sealed::SealedPhase;
@@ -97,14 +97,141 @@ impl Region {
 }
 
 /// The value of a particular cell within the circuit.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 pub enum CellValue<F: Group + Field> {
     /// An unassigned cell.
     Unassigned,
     /// A cell that has been assigned a value.
     Assigned(F),
+    /// A value stored as a fraction to enable batch inversion.
+    #[cfg(feature = "mock-batch-inv")]
+    Rational(F, F),
     /// A unique poisoned cell.
     Poison(usize),
+}
+
+impl<F: Group + Field> PartialEq for CellValue<F> {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Unassigned, Self::Unassigned) => true,
+            (Self::Assigned(a), Self::Assigned(b)) => a == b,
+            #[cfg(feature = "mock-batch-inv")]
+            (Self::Rational(a, b), Self::Rational(c, d)) => *a * d == *b * c,
+            #[cfg(feature = "mock-batch-inv")]
+            (Self::Assigned(a), Self::Rational(n, d)) => *a * *d == *n,
+            #[cfg(feature = "mock-batch-inv")]
+            (Self::Rational(n, d), Self::Assigned(a)) => *a * *d == *n,
+            (Self::Poison(a), Self::Poison(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+#[cfg(feature = "mock-batch-inv")]
+impl<F: Group + Field> CellValue<F> {
+    /// Returns the numerator.
+    pub fn numerator(&self) -> Option<F> {
+        match self {
+            Self::Rational(numerator, _) => Some(*numerator),
+            _ => None,
+        }
+    }
+
+    /// Returns the denominator
+    pub fn denominator(&self) -> Option<F> {
+        match self {
+            Self::Rational(_, denominator) => Some(*denominator),
+            _ => None,
+        }
+    }
+}
+
+#[cfg(feature = "mock-batch-inv")]
+impl<F: Group + Field> From<Assigned<F>> for CellValue<F> {
+    fn from(value: Assigned<F>) -> Self {
+        match value {
+            Assigned::Zero => CellValue::Unassigned,
+            Assigned::Trivial(value) => CellValue::Assigned(value),
+            Assigned::Rational(numerator, denominator) => {
+                CellValue::Rational(numerator, denominator)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "mock-batch-inv")]
+fn calculate_assigned_values<F: Group + Field>(
+    cell_values: &mut [CellValue<F>],
+    inv_denoms: &[Option<F>],
+) {
+    assert_eq!(inv_denoms.len(), cell_values.len());
+    for (value, inv_den) in cell_values.iter_mut().zip(inv_denoms.iter()) {
+        // if numerator and denominator exist, calculate the assigned value
+        // otherwise, return the original CellValue
+        *value = match value {
+            CellValue::Rational(numerator, _) => CellValue::Assigned(*numerator * inv_den.unwrap()),
+            _ => *value,
+        };
+    }
+}
+
+#[cfg(feature = "mock-batch-inv")]
+fn batch_invert_cellvalues<F: Field + Group>(cell_values: &mut [Vec<CellValue<F>>]) {
+    let mut denominators: Vec<_> = cell_values
+        .iter()
+        .map(|f| {
+            f.par_iter()
+                .map(|value| value.denominator())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let denominators_len: usize = denominators.iter().map(|f| f.len()).sum();
+
+    let mut_denominators = denominators
+        .iter_mut()
+        .flat_map(|f| {
+            f.iter_mut()
+                // If the denominator is trivial, we can skip it, reducing the
+                // size of the batch inversion.
+                .filter_map(|d| d.as_mut())
+        })
+        .collect::<Vec<_>>();
+
+    log::info!(
+        "num of denominators: {} / {}",
+        mut_denominators.len(),
+        denominators_len
+    );
+    if mut_denominators.is_empty() {
+        return;
+    }
+
+    let num_threads = rayon::current_num_threads();
+    let chunk_size = (mut_denominators.len() + num_threads - 1) / num_threads;
+    let mut_denominators =
+        mut_denominators
+            .into_iter()
+            .enumerate()
+            .fold(vec![vec![]], |mut acc, (i, denom)| {
+                let len = acc.len();
+                if i % chunk_size == 0 {
+                    acc.push(vec![denom])
+                } else {
+                    acc[len - 1].push(denom);
+                }
+                acc
+            });
+    rayon::scope(|scope| {
+        for chunk in mut_denominators {
+            scope.spawn(|_| {
+                chunk.batch_invert();
+            });
+        }
+    });
+
+    for (cell_values, inv_denoms) in cell_values.iter_mut().zip(denominators.iter()) {
+        calculate_assigned_values(cell_values, inv_denoms);
+    }
 }
 
 /// A value within an expression.
@@ -120,6 +247,8 @@ impl<F: Group + Field> From<CellValue<F>> for Value<F> {
             // Cells that haven't been explicitly assigned to, default to zero.
             CellValue::Unassigned => Value::Real(F::zero()),
             CellValue::Assigned(v) => Value::Real(v),
+            #[cfg(feature = "mock-batch-inv")]
+            CellValue::Rational(n, d) => Value::Real(n * d.invert().unwrap()),
             CellValue::Poison(_) => Value::Poison,
         }
     }
@@ -540,7 +669,7 @@ impl<'a, F: Field + Group> Assignment<F> for MockProver<'a, F> {
 
     fn assign_advice<V, VR, A, AR>(
         &mut self,
-        _: A,
+        anno: A,
         column: Column<Advice>,
         row: usize,
         to: V,
@@ -551,6 +680,7 @@ impl<'a, F: Field + Group> Assignment<F> for MockProver<'a, F> {
         A: FnOnce() -> AR,
         AR: Into<String>,
     {
+        // column of 2nd phase does not need to be assigned when synthesis at 1st phase
         if self.current_phase.0 < column.column_type().phase.0 {
             return Ok(());
         }
@@ -578,7 +708,25 @@ impl<'a, F: Field + Group> Assignment<F> for MockProver<'a, F> {
                 .or_default();
         }
 
-        let assigned = CellValue::Assigned(to().into_field().evaluate().assign()?);
+        let advice_anno = anno().into();
+        #[cfg(not(feature = "mock-batch-inv"))]
+        let val_res = to().into_field().evaluate().assign();
+        #[cfg(feature = "mock-batch-inv")]
+        let val_res = to().into_field().assign();
+        if val_res.is_err() {
+            log::debug!(
+                "[{}] assign to advice {:?} at row {} failed at phase {:?}",
+                advice_anno,
+                column,
+                row,
+                self.current_phase
+            );
+        }
+        #[cfg(not(feature = "mock-batch-inv"))]
+        let assigned = CellValue::Assigned(val_res?);
+        #[cfg(feature = "mock-batch-inv")]
+        let assigned = CellValue::from(val_res?);
+
         *self
             .advice
             .get_mut(column.index())
@@ -641,15 +789,23 @@ impl<'a, F: Field + Group> Assignment<F> for MockProver<'a, F> {
                 .or_default();
         }
 
-        let fix_cell = self
+        let assigned = self
             .fixed
             .get_mut(column.index())
             .and_then(|v| v.get_mut(row - self.rw_rows.start))
             .ok_or(Error::BoundsFailure);
-        if fix_cell.is_err() {
+        if assigned.is_err() {
             println!("fix cell is none: {}, row: {}", column.index(), row);
         }
-        *fix_cell? = CellValue::Assigned(to().into_field().evaluate().assign()?);
+
+        #[cfg(not(feature = "mock-batch-inv"))]
+        {
+            *assigned? = CellValue::Assigned(to().into_field().evaluate().assign()?);
+        }
+        #[cfg(feature = "mock-batch-inv")]
+        {
+            *assigned? = CellValue::from(to().into_field().assign()?);
+        }
 
         Ok(())
     }
@@ -831,12 +987,16 @@ impl<'a, F: FieldExt> MockProver<'a, F> {
             for current_phase in prover.cs.phases() {
                 prover.current_phase = current_phase;
                 prover.advice_prev = last_advice;
-                ConcreteCircuit::FloorPlanner::synthesize(
+                let syn_res = ConcreteCircuit::FloorPlanner::synthesize(
                     &mut prover,
                     circuit,
                     config.clone(),
                     constants.clone(),
-                )?;
+                );
+                if syn_res.is_err() {
+                    log::error!("mock prover syn failed at phase {:?}", current_phase);
+                }
+                syn_res?;
 
                 for (index, phase) in prover.cs.challenge_phase.iter().enumerate() {
                     if current_phase == *phase {
@@ -862,6 +1022,11 @@ impl<'a, F: FieldExt> MockProver<'a, F> {
                         panic!("wrong phase assignment");
                     }
                 }
+                if current_phase.0 < prover.cs.max_phase() {
+                    // only keep the regions that we got during last phase's synthesis
+                    // as we do not need to verify these regions.
+                    prover.regions.clear();
+                }
                 last_advice = prover.advice_vec.as_ref().clone();
             }
         }
@@ -877,6 +1042,18 @@ impl<'a, F: FieldExt> MockProver<'a, F> {
             .cs
             .compress_selectors(prover.selectors_vec.as_ref().clone());
         prover.cs = cs;
+
+        // batch invert
+        #[cfg(feature = "mock-batch-inv")]
+        {
+            batch_invert_cellvalues(
+                Arc::get_mut(&mut prover.advice_vec).expect("get_mut prover.advice_vec"),
+            );
+            batch_invert_cellvalues(
+                Arc::get_mut(&mut prover.fixed_vec).expect("get_mut prover.fixed_vec"),
+            );
+        }
+        // add selector polys
         Arc::get_mut(&mut prover.fixed_vec)
             .expect("get_mut prover.fixed_vec")
             .extend(selector_polys.into_iter().map(|poly| {
@@ -1316,6 +1493,7 @@ impl<'a, F: FieldExt> MockProver<'a, F> {
 
         // Check that within each region, all cells used in instantiated gates have been
         // assigned to.
+        log::debug!("regions.len() = {}", self.regions.len());
         let selector_errors = self.regions.iter().enumerate().flat_map(|(r_i, r)| {
             r.enabled_selectors.iter().flat_map(move |(selector, at)| {
                 // Find the gates enabled by this selector

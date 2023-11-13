@@ -1634,7 +1634,7 @@ impl<F: Field> ConstraintSystem<F> {
         for v in self.lookups_map.values() {
             let LookupTracker { table, inputs } = v;
             let mut args = vec![super::mv_lookup::Argument::new(
-                "mv_lookup",
+                "lookup",
                 table,
                 &[inputs[0].clone()],
             )];

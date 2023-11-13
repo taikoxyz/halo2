@@ -27,7 +27,9 @@ mod circuit;
 mod error;
 mod evaluation;
 mod keygen;
+#[allow(dead_code)]
 mod lookup;
+mod mv_lookup;
 pub(crate) mod permutation;
 mod vanishing;
 

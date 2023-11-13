@@ -128,7 +128,7 @@ pub fn verify_proof<
             vk.cs
                 .lookups
                 .iter()
-                .map(|argument| argument.read_permuted_commitments(transcript))
+                .map(|argument| argument.read_prepared_commitments(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -149,10 +149,10 @@ pub fn verify_proof<
     let lookups_committed = lookups_permuted
         .into_iter()
         .map(|lookups| {
-            // Hash each lookup product commitment
+            // Hash each lookup sum commitment
             lookups
                 .into_iter()
-                .map(|lookup| lookup.read_product_commitment(transcript))
+                .map(|lookup| lookup.read_grand_sum_commitment(transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -297,27 +297,22 @@ pub fn verify_proof<
                         gamma,
                         x,
                     ))
-                    .chain(
-                        lookups
-                            .iter()
-                            .zip(vk.cs.lookups.iter())
-                            .flat_map(move |(p, argument)| {
-                                p.expressions(
-                                    l_0,
-                                    l_last,
-                                    l_blind,
-                                    argument,
-                                    theta,
-                                    beta,
-                                    gamma,
-                                    advice_evals,
-                                    fixed_evals,
-                                    instance_evals,
-                                    challenges,
-                                )
-                            })
-                            .into_iter(),
-                    )
+                    .chain(lookups.iter().zip(vk.cs.lookups.iter()).flat_map(
+                        move |(p, argument)| {
+                            p.expressions(
+                                l_0,
+                                l_last,
+                                l_blind,
+                                argument,
+                                theta,
+                                beta,
+                                advice_evals,
+                                fixed_evals,
+                                instance_evals,
+                                challenges,
+                            )
+                        },
+                    ))
             });
 
         vanishing.verify(params, expressions, y, xn)
@@ -363,12 +358,7 @@ pub fn verify_proof<
                         },
                     ))
                     .chain(permutation.queries(vk, x))
-                    .chain(
-                        lookups
-                            .iter()
-                            .flat_map(move |p| p.queries(vk, x))
-                            .into_iter(),
-                    )
+                    .chain(lookups.iter().flat_map(move |p| p.queries(vk, x)))
             },
         )
         .chain(

@@ -1,7 +1,9 @@
 use crate::multicore;
 use crate::plonk::lookup::prover::Committed;
 use crate::plonk::permutation::Argument;
-use crate::plonk::{lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey};
+use crate::plonk::{
+    mv_lookup, permutation, AdviceQuery, Any, FixedQuery, InstanceQuery, ProvingKey,
+};
 use crate::poly::Basis;
 use crate::{
     arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
@@ -185,7 +187,7 @@ pub struct Evaluator<C: CurveAffine> {
     ///  Custom gates evalution
     pub custom_gates: GraphEvaluator<C>,
     ///  Lookups evalution
-    pub lookups: Vec<GraphEvaluator<C>>,
+    pub lookups: Vec<(Vec<GraphEvaluator<C>>, GraphEvaluator<C>)>,
 }
 
 /// GraphEvaluator
@@ -241,9 +243,12 @@ impl<C: CurveAffine> Evaluator<C> {
 
         // Lookups
         for lookup in cs.lookups.iter() {
-            let mut graph = GraphEvaluator::default();
+            let mut graph_table = GraphEvaluator::default();
+            let mut graph_inputs: Vec<_> = (0..lookup.inputs_expressions.len())
+                .map(|_| GraphEvaluator::default())
+                .collect();
 
-            let mut evaluate_lc = |expressions: &Vec<Expression<_>>| {
+            let evaluate_lc = |graph: &mut GraphEvaluator<C>, expressions: &Vec<Expression<_>>| {
                 let parts = expressions
                     .iter()
                     .map(|expr| graph.add_expression(expr))
@@ -255,22 +260,33 @@ impl<C: CurveAffine> Evaluator<C> {
                 ))
             };
 
-            // Input coset
-            let compressed_input_coset = evaluate_lc(&lookup.input_expressions);
+            // Inputs cosets
+            for (input_expressions, graph_input) in lookup
+                .inputs_expressions
+                .iter()
+                .zip(graph_inputs.iter_mut())
+            {
+                let compressed_input_coset = evaluate_lc(graph_input, input_expressions);
+
+                graph_input.add_calculation(Calculation::Add(
+                    compressed_input_coset,
+                    ValueSource::Beta(),
+                ));
+            }
+
             // table coset
-            let compressed_table_coset = evaluate_lc(&lookup.table_expressions);
-            // z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-            let right_gamma = graph.add_calculation(Calculation::Add(
+            let compressed_table_coset = evaluate_lc(&mut graph_table, &lookup.table_expressions);
+
+            graph_table.add_calculation(Calculation::Add(
                 compressed_table_coset,
-                ValueSource::Gamma(),
-            ));
-            let lc = graph.add_calculation(Calculation::Add(
-                compressed_input_coset,
                 ValueSource::Beta(),
             ));
-            graph.add_calculation(Calculation::Mul(lc, right_gamma));
 
-            ev.lookups.push(graph);
+            /*
+                a) f_i + beta
+                b) t + beta
+            */
+            ev.lookups.push((graph_inputs.to_vec(), graph_table));
         }
 
         ev
@@ -287,7 +303,7 @@ impl<C: CurveAffine> Evaluator<C> {
         beta: C::ScalarExt,
         gamma: C::ScalarExt,
         theta: C::ScalarExt,
-        lookups: &[Vec<lookup::prover::Committed<C>>],
+        lookups: &[Vec<mv_lookup::prover::Committed<C>>],
         permutations: &[permutation::prover::Committed<C>],
     ) -> Polynomial<C::ScalarExt, ExtendedLagrangeCoeff> {
         let domain = &pk.vk.domain;
@@ -492,33 +508,146 @@ impl<C: CurveAffine> Evaluator<C> {
                         });
                     }
 
+                    // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + beta)
+                    // The outer vector has capacity self.lookups.len()
+                    // The middle vector has capacity domain.extended_len()
+                    // The inner vector has capacity
+                    let inputs_inv_sum: Vec<Vec<Vec<_>>> = lookups
+                        .iter()
+                        .enumerate()
+                        .map(|(n, _)| {
+                            let (inputs_lookup_evaluator, _) = &self.lookups[n];
+                            let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
+                                .iter()
+                                .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
+                                .collect();
+
+                            let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
+                                Vec::with_capacity(self.lookups[n].0.len() << domain.k());
+                            for idx in 0..size {
+                                // For each compressed input column, evaluate at ω^i and add beta
+                                // This is a vector of length self.lookups[n].0.len()
+                                let inputs_values: Vec<C::ScalarExt> = inputs_lookup_evaluator
+                                    .iter()
+                                    .zip(inputs_eval_data.iter_mut())
+                                    .map(|(input_lookup_evaluator, input_eval_data)| {
+                                        input_lookup_evaluator.evaluate(
+                                            input_eval_data,
+                                            fixed,
+                                            advice,
+                                            instance,
+                                            challenges,
+                                            &beta,
+                                            &gamma,
+                                            &theta,
+                                            &y,
+                                            &C::ScalarExt::zero(),
+                                            idx,
+                                            rot_scale,
+                                            isize,
+                                        )
+                                    })
+                                    .collect();
+
+                                inputs_values_for_extended_domain.extend_from_slice(&inputs_values);
+                            }
+
+                            let num_threads = rayon::current_num_threads();
+                            let chunk_size =
+                                (inputs_values_for_extended_domain.len() + num_threads - 1)
+                                    / num_threads;
+                            rayon::scope(|scope| {
+                                for chunk in
+                                    inputs_values_for_extended_domain.chunks_mut(chunk_size)
+                                {
+                                    scope.spawn(|_| {
+                                        chunk.batch_invert();
+                                    })
+                                }
+                            });
+
+                            // The outer vector has capacity domain.extended_len()
+                            // The inner vector has capacity self.lookups[n].0.len()
+                            let inputs_inv_sums: Vec<Vec<_>> = inputs_values_for_extended_domain
+                                .chunks_exact(self.lookups[n].0.len())
+                                .map(|c| c.to_vec())
+                                .collect();
+                            inputs_inv_sums
+                        })
+                        .collect();
+
                     // Lookups
                     for (n, lookup) in lookups.iter().enumerate() {
                         // Polynomials required for this lookup.
                         // Calculated here so these only have to be kept in memory for the short time
                         // they are actually needed.
-                        let product_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.product_poly.clone(),
+                        let phi_coset = pk.vk.domain.coeff_to_extended_part(
+                            lookup.phi_poly.clone(),
                             current_extended_omega,
                         );
-                        let permuted_input_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.permuted_input_poly.clone(),
-                            current_extended_omega,
-                        );
-                        let permuted_table_coset = pk.vk.domain.coeff_to_extended_part(
-                            lookup.permuted_table_poly.clone(),
-                            current_extended_omega,
-                        );
+                        let m_coset = pk
+                            .vk
+                            .domain
+                            .coeff_to_extended_part(lookup.m_poly.clone(), current_extended_omega);
 
                         // Lookup constraints
+                        /*
+                            φ_i(X) = f_i(X) + beta
+                            τ(X) = t(X) + beta
+                            LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+                            RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+                                = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
+                                = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
+                        */
                         parallelize(&mut values, |values, start| {
-                            let lookup_evaluator = &self.lookups[n];
-                            let mut eval_data = lookup_evaluator.instance();
+                            let (inputs_lookup_evaluator, table_lookup_evaluator) =
+                                &self.lookups[n];
+                            let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
+                                .iter()
+                                .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
+                                .collect();
+                            let mut table_eval_data = table_lookup_evaluator.instance();
+
                             for (i, value) in values.iter_mut().enumerate() {
                                 let idx = start + i;
 
-                                let table_value = lookup_evaluator.evaluate(
-                                    &mut eval_data,
+                                // f_i(X) + beta for i in expressions
+                                let inputs_value: Vec<C::ScalarExt> = inputs_lookup_evaluator
+                                    .iter()
+                                    .zip(inputs_eval_data.iter_mut())
+                                    .map(|(input_lookup_evaluator, input_eval_data)| {
+                                        input_lookup_evaluator.evaluate(
+                                            input_eval_data,
+                                            fixed,
+                                            advice,
+                                            instance,
+                                            challenges,
+                                            &beta,
+                                            &gamma,
+                                            &theta,
+                                            &y,
+                                            &C::ScalarExt::zero(),
+                                            idx,
+                                            rot_scale,
+                                            isize,
+                                        )
+                                    })
+                                    .collect();
+
+                                // Π(φ_i(X))
+                                let inputs_prod: C::Scalar = inputs_value
+                                    .iter()
+                                    .fold(C::Scalar::one(), |acc, input| acc * input);
+
+                                // f_i(X) + beta at ω^idx
+                                let fi_inverses = &inputs_inv_sum[n][idx];
+                                let inputs_inv_sum = fi_inverses
+                                    .iter()
+                                    .fold(C::Scalar::zero(), |acc, input| acc + input);
+
+                                // t(X) + beta
+                                let table_value = table_lookup_evaluator.evaluate(
+                                    &mut table_eval_data,
                                     fixed,
                                     advice,
                                     instance,
@@ -534,41 +663,27 @@ impl<C: CurveAffine> Evaluator<C> {
                                 );
 
                                 let r_next = get_rotation_idx(idx, 1, rot_scale, isize);
-                                let r_prev = get_rotation_idx(idx, -1, rot_scale, isize);
 
-                                let a_minus_s =
-                                    permuted_input_coset[idx] - permuted_table_coset[idx];
-                                // l_0(X) * (1 - z(X)) = 0
-                                *value = *value * y + ((one - product_coset[idx]) * l0[idx]);
-                                // l_last(X) * (z(X)^2 - z(X)) = 0
-                                *value = *value * y
-                                    + ((product_coset[idx] * product_coset[idx]
-                                        - product_coset[idx])
-                                        * l_last[idx]);
-                                // (1 - (l_last(X) + l_blind(X))) * (
-                                //   z(\omega X) (a'(X) + \beta) (s'(X) + \gamma)
-                                //   - z(X) (\theta^{m-1} a_0(X) + ... + a_{m-1}(X) + \beta)
-                                //          (\theta^{m-1} s_0(X) + ... + s_{m-1}(X) + \gamma)
-                                // ) = 0
-                                *value = *value * y
-                                    + ((product_coset[r_next]
-                                        * (permuted_input_coset[idx] + beta)
-                                        * (permuted_table_coset[idx] + gamma)
-                                        - product_coset[idx] * table_value)
-                                        * l_active_row[idx]);
-                                // Check that the first values in the permuted input expression and permuted
-                                // fixed expression are the same.
-                                // l_0(X) * (a'(X) - s'(X)) = 0
-                                *value = *value * y + (a_minus_s * l0[idx]);
-                                // Check that each value in the permuted lookup input expression is either
-                                // equal to the value above it, or the value at the same index in the
-                                // permuted table expression.
-                                // (1 - (l_last + l_blind)) * (a′(X) − s′(X))⋅(a′(X) − a′(\omega^{-1} X)) = 0
-                                *value = *value * y
-                                    + (a_minus_s
-                                        * (permuted_input_coset[idx]
-                                            - permuted_input_coset[r_prev])
-                                        * l_active_row[idx]);
+                                let lhs = {
+                                    // τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
+                                    table_value * inputs_prod * (phi_coset[r_next] - phi_coset[idx])
+                                };
+
+                                let rhs = {
+                                    //   τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+                                    // = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
+                                    // = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
+                                    inputs_prod * (table_value * inputs_inv_sum - m_coset[idx])
+                                };
+
+                                // phi[0] = 0
+                                *value = *value * y + l0[idx] * phi_coset[idx];
+
+                                // phi[u] = 0
+                                *value = *value * y + l_last[idx] * phi_coset[idx];
+
+                                // q(X) = (1 - (l_last(X) + l_blind(X))) * (LHS - RHS)
+                                *value = *value * y + (lhs - rhs) * l_active_row[idx];
                             }
                         });
                     }

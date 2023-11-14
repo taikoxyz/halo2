@@ -29,8 +29,8 @@ use std::{
     ops::{Mul, MulAssign},
 };
 
-use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 use crate::arithmetic::parallelize_internal;
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {
@@ -448,12 +448,12 @@ impl<C: CurveAffine> Evaluated<C> {
 }
 
 mod benches {
-    use std::collections::BTreeMap;
-    use std::time::Instant;
     use ark_std::rand::thread_rng;
     use env_logger::init;
     use ff::Field;
     use halo2curves::bn256::Fr;
+    use std::collections::BTreeMap;
+    use std::time::Instant;
 
     // bench the time to construct a BTreeMap out of a large table
     // tivm is short for table_index_value_mapping
@@ -466,25 +466,33 @@ mod benches {
         for log_n in 20..26 {
             let n = 1 << log_n;
             let dur = Instant::now();
-            let table: BTreeMap<Fr, usize> = (0..n)
+            let _table: BTreeMap<Fr, usize> = (0..n)
                 .into_iter()
                 .map(|_| Fr::random(&mut rng))
                 .enumerate()
                 .map(|(i, x)| (x, i))
                 .collect();
-            log::info!("construct btreemap from random vec (len = {}) took {:?}", n, dur.elapsed());
+            log::info!(
+                "construct btreemap from random vec (len = {}) took {:?}",
+                n,
+                dur.elapsed()
+            );
         }
 
         for log_n in 20..26 {
             let n = 1 << log_n;
             let dur = Instant::now();
-            let table: BTreeMap<Fr, usize> = (0..n)
+            let _table: BTreeMap<Fr, usize> = (0..n)
                 .into_iter()
-                .map(|i| Fr::from(i))
+                .map(Fr::from)
                 .enumerate()
                 .map(|(i, x)| (x, i))
                 .collect();
-            log::info!("construct btreemap from increasing vec (len = {}) took {:?}", n, dur.elapsed());
+            log::info!(
+                "construct btreemap from increasing vec (len = {}) took {:?}",
+                n,
+                dur.elapsed()
+            );
         }
     }
 }

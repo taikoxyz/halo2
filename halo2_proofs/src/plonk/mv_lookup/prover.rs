@@ -28,6 +28,8 @@ use std::{
     iter,
     ops::{Mul, MulAssign},
 };
+use std::time::Instant;
+use ark_std::{end_timer, start_timer};
 
 use crate::arithmetic::parallelize_internal;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
@@ -110,13 +112,16 @@ impl<F: FieldExt> Argument<F> {
 
         // TODO: construction of BTreeMap for a large vector
         // compute m(X)
+        let tivm_time = start_timer!(|| "table index value mapping");
         let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression
             .iter()
             .take(params.n() as usize - blinding_factors - 1)
             .enumerate()
             .map(|(i, &x)| (x, i))
             .collect();
+        end_timer!(tivm_time);
 
+        let m_time = start_timer!(|| "m(X) values");
         let m_values: Vec<F> = {
             use std::sync::atomic::{AtomicU64, Ordering};
             use std::sync::RwLock;
@@ -140,6 +145,7 @@ impl<F: FieldExt> Argument<F> {
                 .map(|mi| F::from(mi.load(Ordering::Relaxed) as u64))
                 .collect()
         };
+        end_timer!(m_time);
         let m_values = pk.vk.domain.lagrange_from_vec(m_values);
 
         #[cfg(feature = "sanity-checks")]
@@ -222,6 +228,7 @@ impl<C: CurveAffine> Prepared<C> {
         */
 
         // ∑ 1/(φ_i(X))
+        let inputs_log_drv_time = start_timer!(|| "inputs_log_derivative");
         let mut inputs_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
         for compressed_input_expression in self.compressed_inputs_expressions.iter() {
             let mut input_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
@@ -245,8 +252,10 @@ impl<C: CurveAffine> Prepared<C> {
                 inputs_log_derivatives[i] += input_log_derivatives[i];
             }
         }
+        end_timer!(inputs_log_drv_time);
 
         // 1 / τ(X)
+        let table_log_drv_time = start_timer!(|| "table log derivative");
         let mut table_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
         parallelize(
             &mut table_log_derivatives,
@@ -262,7 +271,9 @@ impl<C: CurveAffine> Prepared<C> {
 
         // TODO: use parallelized batch invert
         table_log_derivatives.iter_mut().batch_invert();
+        end_timer!(table_log_drv_time);
 
+        let log_drv_diff_time = start_timer!(|| "log derivatives diff");
         // (Σ 1/(φ_i(X)) - m(X) / τ(X))
         let mut log_derivatives_diff = vec![C::Scalar::zero(); params.n() as usize];
         parallelize(&mut log_derivatives_diff, |log_derivatives_diff, start| {
@@ -276,10 +287,12 @@ impl<C: CurveAffine> Prepared<C> {
                 *log_derivative_diff = *fi - *mi * *ti;
             }
         });
+        end_timer!(log_drv_diff_time);
 
         // Compute the evaluations of the lookup grand sum polynomial
         // over our domain, starting with phi[0] = 0
         let blinding_factors = pk.vk.cs.blinding_factors();
+        let phi_time = start_timer!(|| "par_scan(log_derivatives_diff)");
         let phi = {
             // parallelized version of log_derivatives_diff.scan()
             let active_size = params.n() as usize - blinding_factors;
@@ -318,6 +331,7 @@ impl<C: CurveAffine> Prepared<C> {
                 .chain((0..blinding_factors).map(|_| C::Scalar::random(&mut rng)))
                 .collect::<Vec<_>>()
         };
+        end_timer!(phi_time);
         assert_eq!(phi.len(), params.n() as usize);
         let phi = pk.vk.domain.lagrange_from_vec(phi);
 

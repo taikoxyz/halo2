@@ -63,10 +63,7 @@ impl<F: Field> Argument<F> {
             .map(|input_expressions| expr_degree(input_expressions))
             .sum();
 
-        let mut table_degree = 0;
-        for expr in self.table_expressions.iter() {
-            table_degree = std::cmp::max(table_degree, expr.degree());
-        }
+        let table_degree = expr_degree(&self.table_expressions);
 
         /*
             φ_i(X) = f_i(X) + α

@@ -449,7 +449,6 @@ impl<C: CurveAffine> Evaluated<C> {
 
 mod benches {
     use ark_std::rand::thread_rng;
-    use env_logger::init;
     use ff::Field;
     use halo2curves::bn256::Fr;
     use std::collections::BTreeMap;
@@ -460,7 +459,7 @@ mod benches {
     #[ignore]
     #[test]
     fn bench_tivm_btree_map() {
-        init();
+        env_logger::init();
         let mut rng = thread_rng();
 
         for log_n in 20..26 {

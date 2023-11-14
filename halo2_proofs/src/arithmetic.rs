@@ -534,7 +534,10 @@ where
 
 /// This simple utility function will parallelize an operation that is to be
 /// performed over a mutable slice.
-pub(crate) fn parallelize_internal<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) -> Vec<usize> {
+pub(crate) fn parallelize_internal<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(
+    v: &mut [T],
+    f: F,
+) -> Vec<usize> {
     let n = v.len();
     let num_threads = multicore::current_num_threads();
     let mut chunk = (n as usize) / num_threads;

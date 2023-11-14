@@ -534,7 +534,7 @@ where
 
 /// This simple utility function will parallelize an operation that is to be
 /// performed over a mutable slice.
-pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
+pub(crate) fn parallelize_internal<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) -> Vec<usize> {
     let n = v.len();
     let num_threads = multicore::current_num_threads();
     let mut chunk = (n as usize) / num_threads;
@@ -543,14 +543,23 @@ pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mu
     }
 
     multicore::scope(|scope| {
+        let mut chunk_starts = vec![];
         for (chunk_num, v) in v.chunks_mut(chunk).enumerate() {
             let f = f.clone();
             scope.spawn(move |_| {
                 let start = chunk_num * chunk;
                 f(v, start);
             });
+            let start = chunk_num * chunk;
+            chunk_starts.push(start);
         }
-    });
+
+        chunk_starts
+    })
+}
+
+pub fn parallelize<T: Send, F: Fn(&mut [T], usize) + Send + Sync + Clone>(v: &mut [T], f: F) {
+    parallelize_internal(v, f);
 }
 
 fn log2_floor(num: usize) -> u32 {

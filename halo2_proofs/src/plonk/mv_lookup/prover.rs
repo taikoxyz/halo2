@@ -30,6 +30,7 @@ use std::{
 };
 
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use crate::arithmetic::parallelize_internal;
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {
@@ -67,7 +68,7 @@ impl<F: FieldExt> Argument<F> {
         fixed_values: &'a [Polynomial<C::Scalar, LagrangeCoeff>],
         instance_values: &'a [Polynomial<C::Scalar, LagrangeCoeff>],
         challenges: &'a [C::Scalar],
-        mut _rng: R, // in case we want to blind (do we actually need zk?)
+        mut rng: R, // in case we want to blind (do we actually need zk?)
         transcript: &mut T,
     ) -> Result<Prepared<C>, Error>
     where
@@ -107,6 +108,7 @@ impl<F: FieldExt> Argument<F> {
 
         let blinding_factors = pk.vk.cs.blinding_factors();
 
+        // TODO: construction of BTreeMap for a large vector
         // compute m(X)
         let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression
             .iter()
@@ -153,7 +155,7 @@ impl<F: FieldExt> Argument<F> {
             }
 
             // check sums
-            let alpha = C::Scalar::random(&mut _rng);
+            let alpha = C::Scalar::random(&mut rng);
             let cs_input_sum =
                 |compressed_input_expression: &Polynomial<C::Scalar, LagrangeCoeff>| {
                     let mut lhs_sum = C::Scalar::zero();
@@ -182,7 +184,8 @@ impl<F: FieldExt> Argument<F> {
         }
 
         // commit to m(X)
-        let blind = Blind(C::Scalar::zero());
+        // TODO: should we use zero instead?
+        let blind = Blind(C::Scalar::random(rng));
         let m_commitment = params.commit_lagrange(&m_values, blind).to_affine();
 
         // write commitment of m(X) to transcript
@@ -212,8 +215,8 @@ impl<C: CurveAffine> Prepared<C> {
         transcript: &mut T,
     ) -> Result<Committed<C>, Error> {
         /*
-            φ_i(X) = f_i(X) + α
-            τ(X) = t(X) + α
+            φ_i(X) = f_i(X) + beta
+            τ(X) = t(X) + beta
             LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
             RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
         */
@@ -234,6 +237,7 @@ impl<C: CurveAffine> Prepared<C> {
                     }
                 },
             );
+            // TODO: use parallelized batch invert
             input_log_derivatives.iter_mut().batch_invert();
 
             // TODO: remove last blinders from this
@@ -256,6 +260,7 @@ impl<C: CurveAffine> Prepared<C> {
             },
         );
 
+        // TODO: use parallelized batch invert
         table_log_derivatives.iter_mut().batch_invert();
 
         // (Σ 1/(φ_i(X)) - m(X) / τ(X))
@@ -276,6 +281,7 @@ impl<C: CurveAffine> Prepared<C> {
         // over our domain, starting with phi[0] = 0
         let blinding_factors = pk.vk.cs.blinding_factors();
         let phi = {
+            // parallelized version of log_derivatives_diff.scan()
             let active_size = params.n() as usize - blinding_factors;
             let chunk = {
                 let num_threads = crate::multicore::current_num_threads();
@@ -291,6 +297,8 @@ impl<C: CurveAffine> Prepared<C> {
                 .chain(log_derivatives_diff)
                 .take(active_size)
                 .collect::<Vec<_>>();
+            // TODO: remove the implicit assumption that parallelize() split the grand_sum
+            //      into segments that each has `chunk` elements except the last.
             parallelize(&mut grand_sum, |segment_grand_sum, _| {
                 for i in 1..segment_grand_sum.len() {
                     segment_grand_sum[i] += segment_grand_sum[i - 1];
@@ -372,7 +380,7 @@ impl<C: CurveAffine> Prepared<C> {
             assert_eq!(phi[u], C::Scalar::zero());
         }
 
-        let grand_sum_blind = Blind(C::Scalar::zero());
+        let grand_sum_blind = Blind(C::Scalar::random(rng));
         let phi_commitment = params.commit_lagrange(&phi, grand_sum_blind).to_affine();
 
         // Hash grand sum commitment
@@ -436,5 +444,47 @@ impl<C: CurveAffine> Evaluated<C> {
                 poly: &self.constructed.m_poly,
                 blind: Blind(C::Scalar::zero()),
             }))
+    }
+}
+
+mod benches {
+    use std::collections::BTreeMap;
+    use std::time::Instant;
+    use ark_std::rand::thread_rng;
+    use env_logger::init;
+    use ff::Field;
+    use halo2curves::bn256::Fr;
+
+    // bench the time to construct a BTreeMap out of a large table
+    // tivm is short for table_index_value_mapping
+    #[ignore]
+    #[test]
+    fn bench_tivm_btree_map() {
+        init();
+        let mut rng = thread_rng();
+
+        for log_n in 20..26 {
+            let n = 1 << log_n;
+            let dur = Instant::now();
+            let table: BTreeMap<Fr, usize> = (0..n)
+                .into_iter()
+                .map(|_| Fr::random(&mut rng))
+                .enumerate()
+                .map(|(i, x)| (x, i))
+                .collect();
+            log::info!("construct btreemap from random vec (len = {}) took {:?}", n, dur.elapsed());
+        }
+
+        for log_n in 20..26 {
+            let n = 1 << log_n;
+            let dur = Instant::now();
+            let table: BTreeMap<Fr, usize> = (0..n)
+                .into_iter()
+                .map(|i| Fr::from(i))
+                .enumerate()
+                .map(|(i, x)| (x, i))
+                .collect();
+            log::info!("construct btreemap from increasing vec (len = {}) took {:?}", n, dur.elapsed());
+        }
     }
 }

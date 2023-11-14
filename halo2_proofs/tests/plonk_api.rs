@@ -672,7 +672,7 @@ fn plonk_api() {
         >(verifier_params, pk.get_vk(), &proof[..]);
     }
 
-    env_logger::init();
+    let _logger_err = env_logger::try_init();
     test_plonk_api_ipa();
     test_plonk_api_gwc();
     test_plonk_api_shplonk();
@@ -854,7 +854,7 @@ fn plonk_api_with_many_subregions() {
     type Scheme = KZGCommitmentScheme<Bn256>;
     // bad_keys!(Scheme);
 
-    env_logger::try_init().unwrap();
+    let _logger_err = env_logger::try_init();
     let (a, instance, lookup_table) = common!(Scheme);
 
     let circuit: MyCircuit<<Scheme as CommitmentScheme>::Scalar> = MyCircuit {

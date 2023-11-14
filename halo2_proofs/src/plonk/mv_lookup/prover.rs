@@ -13,6 +13,7 @@ use crate::{
     },
     transcript::{EncodedChallenge, TranscriptWrite},
 };
+use ark_std::{end_timer, start_timer};
 use blake2b_simd::Hash;
 use ff::{BitViewSized, PrimeField, PrimeFieldBits};
 use group::{
@@ -22,14 +23,13 @@ use group::{
 use rand_core::RngCore;
 use rayon::current_num_threads;
 use std::collections::{BTreeSet, HashSet};
+use std::time::Instant;
 use std::{any::TypeId, convert::TryInto, num::ParseIntError, ops::Index};
 use std::{
     collections::BTreeMap,
     iter,
     ops::{Mul, MulAssign},
 };
-use std::time::Instant;
-use ark_std::{end_timer, start_timer};
 
 use crate::arithmetic::parallelize_internal;
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};

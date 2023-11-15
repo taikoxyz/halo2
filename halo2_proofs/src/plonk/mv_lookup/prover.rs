@@ -77,6 +77,14 @@ impl<F: FieldExt> Argument<F> {
         C: CurveAffine<ScalarExt = F>,
         C::Curve: Mul<F, Output = C::Curve> + MulAssign<F>,
     {
+        let prepare_time = start_timer!(|| format!(
+            "prepare m(X) (inputs={:?}, table={})",
+            self.inputs_expressions
+                .iter()
+                .map(|e| e.len())
+                .collect::<Vec<usize>>(),
+            self.table_expressions.len()
+        ));
         // Closure to get values of expressions and compress them
         let compress_expressions = |expressions: &[Expression<C::Scalar>]| {
             let compressed_expression = expressions
@@ -197,6 +205,8 @@ impl<F: FieldExt> Argument<F> {
         // write commitment of m(X) to transcript
         transcript.write_point(m_commitment)?;
 
+        end_timer!(prepare_time);
+
         Ok(Prepared {
             compressed_inputs_expressions,
             compressed_table_expression,
@@ -226,6 +236,7 @@ impl<C: CurveAffine> Prepared<C> {
             LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
             RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
         */
+        let lookup_commit_time = start_timer!(|| "commit_grand_sum");
 
         // ∑ 1/(φ_i(X))
         let inputs_log_drv_time = start_timer!(|| "inputs_log_derivative");
@@ -244,8 +255,10 @@ impl<C: CurveAffine> Prepared<C> {
                     }
                 },
             );
+            let inputs_inv_time = start_timer!(|| "batch invert");
             // TODO: use parallelized batch invert
             input_log_derivatives.iter_mut().batch_invert();
+            end_timer!(inputs_inv_time);
 
             // TODO: remove last blinders from this
             for i in 0..params.n() as usize {
@@ -269,8 +282,10 @@ impl<C: CurveAffine> Prepared<C> {
             },
         );
 
+        let table_inv_time = start_timer!(|| "table batch invert");
         // TODO: use parallelized batch invert
         table_log_derivatives.iter_mut().batch_invert();
+        end_timer!(table_inv_time);
         end_timer!(table_log_drv_time);
 
         let log_drv_diff_time = start_timer!(|| "log derivatives diff");
@@ -400,6 +415,7 @@ impl<C: CurveAffine> Prepared<C> {
         // Hash grand sum commitment
         transcript.write_point(phi_commitment)?;
 
+        end_timer!(lookup_commit_time);
         Ok(Committed {
             m_poly: pk.vk.domain.lagrange_to_coeff(self.m_values),
             phi_poly: pk.vk.domain.lagrange_to_coeff(phi),

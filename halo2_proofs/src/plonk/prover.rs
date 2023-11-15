@@ -34,6 +34,7 @@ use crate::{
     poly::batch_invert_assigned,
     transcript::{EncodedChallenge, TranscriptWrite},
 };
+use ark_std::{end_timer, start_timer};
 use group::prime::PrimeCurveAffine;
 
 /// This creates a proof for the provided `circuit` when given the public
@@ -533,8 +534,11 @@ where
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
+            let lookup_get_mx_time =
+                start_timer!(|| format!("get m(X) in {} lookups", pk.vk.cs.lookups.len()));
             // Construct and commit to permuted values for each lookup
-            pk.vk
+            let mx = pk
+                .vk
                 .cs
                 .lookups
                 .iter()
@@ -552,7 +556,10 @@ where
                         transcript,
                     )
                 })
-                .collect()
+                .collect();
+            end_timer!(lookup_get_mx_time);
+
+            mx
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -582,6 +589,7 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
+    let lookup_commit_time = start_timer!(|| "lookup commit grand sum");
     let lookups: Vec<Vec<mv_lookup::prover::Committed<Scheme::Curve>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
@@ -592,6 +600,7 @@ where
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
+    end_timer!(lookup_commit_time);
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
     let vanishing = vanishing::Argument::commit(params, domain, &mut rng, transcript)?;

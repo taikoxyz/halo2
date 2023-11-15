@@ -31,7 +31,7 @@ use std::{
     ops::{Mul, MulAssign},
 };
 
-use crate::arithmetic::parallelize_internal;
+use crate::arithmetic::{par_invert, parallelize_internal};
 use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
 #[derive(Debug)]
@@ -256,8 +256,7 @@ impl<C: CurveAffine> Prepared<C> {
                 },
             );
             let inputs_inv_time = start_timer!(|| "batch invert");
-            // TODO: use parallelized batch invert
-            input_log_derivatives.iter_mut().batch_invert();
+            par_invert(input_log_derivatives.as_mut_slice());
             end_timer!(inputs_inv_time);
 
             // TODO: remove last blinders from this
@@ -283,8 +282,7 @@ impl<C: CurveAffine> Prepared<C> {
         );
 
         let table_inv_time = start_timer!(|| "table batch invert");
-        // TODO: use parallelized batch invert
-        table_log_derivatives.iter_mut().batch_invert();
+        par_invert(table_log_derivatives.as_mut_slice());
         end_timer!(table_inv_time);
         end_timer!(table_log_drv_time);
 

@@ -32,7 +32,9 @@ use std::{
 };
 
 use crate::arithmetic::{par_invert, parallelize_internal};
-use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::prelude::{
+    IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator, ParallelSliceMut,
+};
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {
@@ -118,15 +120,15 @@ impl<F: FieldExt> Argument<F> {
 
         let blinding_factors = pk.vk.cs.blinding_factors();
 
-        // TODO: construction of BTreeMap for a large vector
         // compute m(X)
         let tivm_time = start_timer!(|| "table index value mapping");
-        let table_index_value_mapping: BTreeMap<C::Scalar, usize> = compressed_table_expression
+        let mut sorted_table_with_indices = compressed_table_expression
             .iter()
             .take(params.n() as usize - blinding_factors - 1)
             .enumerate()
-            .map(|(i, &x)| (x, i))
-            .collect();
+            .map(|(i, t)| (t, i))
+            .collect::<Vec<_>>();
+        sorted_table_with_indices.par_sort_by_key(|(&t, _)| t);
         end_timer!(tivm_time);
 
         let m_time = start_timer!(|| "m(X) values");
@@ -140,10 +142,12 @@ impl<F: FieldExt> Argument<F> {
                     .par_iter()
                     .take(params.n() as usize - blinding_factors - 1)
                     .try_for_each(|fi| -> Result<(), Error> {
-                        let index = table_index_value_mapping
-                            .get(fi)
-                            .ok_or(Error::ConstraintSystemFailure)?;
-                        m_values[*index].fetch_add(1, Ordering::Relaxed);
+                        let index = sorted_table_with_indices
+                            .binary_search_by_key(&fi, |&(t, _)| t)
+                            .map_err(|_| Error::ConstraintSystemFailure)?;
+                        let index = sorted_table_with_indices[index].1;
+
+                        m_values[index].fetch_add(1, Ordering::Relaxed);
                         Ok(())
                     });
             }

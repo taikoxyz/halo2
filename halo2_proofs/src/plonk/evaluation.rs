@@ -18,6 +18,8 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use rayon::prelude::IntoParallelIterator;
+use rayon::prelude::ParallelIterator;
 use std::any::TypeId;
 use std::convert::TryInto;
 use std::num::ParseIntError;
@@ -511,69 +513,56 @@ impl<C: CurveAffine> Evaluator<C> {
 
                     // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + beta)
                     // The outer vector has capacity self.lookups.len()
-                    // The middle vector has capacity domain.extended_len()
-                    // The inner vector has capacity
-                    let inputs_inv_sum: Vec<Vec<Vec<_>>> = lookups
+                    let inputs_inv_sum: Vec<Vec<_>> = self
+                        .lookups
                         .iter()
-                        .enumerate()
-                        .map(|(n, _)| {
-                            let (inputs_lookup_evaluator, _) = &self.lookups[n];
+                        .map(|lookup| {
+                            let (inputs_lookup_evaluator, _) = lookup;
                             let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
                                 .iter()
                                 .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
                                 .collect();
 
                             let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
-                                Vec::with_capacity(self.lookups[n].0.len() << domain.k());
-                            for idx in 0..size {
-                                // For each compressed input column, evaluate at ω^i and add beta
-                                // This is a vector of length self.lookups[n].0.len()
-                                let inputs_values: Vec<C::ScalarExt> = inputs_lookup_evaluator
+                                inputs_lookup_evaluator
                                     .iter()
                                     .zip(inputs_eval_data.iter_mut())
-                                    .map(|(input_lookup_evaluator, input_eval_data)| {
-                                        input_lookup_evaluator.evaluate(
-                                            input_eval_data,
-                                            fixed,
-                                            advice,
-                                            instance,
-                                            challenges,
-                                            &beta,
-                                            &gamma,
-                                            &theta,
-                                            &y,
-                                            &C::ScalarExt::zero(),
-                                            idx,
-                                            rot_scale,
-                                            isize,
-                                        )
+                                    .flat_map(|(input_lookup_evaluator, input_eval_data)| {
+                                        (0..size).into_iter().map(|idx| {
+                                            input_lookup_evaluator.evaluate(
+                                                input_eval_data,
+                                                fixed,
+                                                advice,
+                                                instance,
+                                                challenges,
+                                                &beta,
+                                                &gamma,
+                                                &theta,
+                                                &y,
+                                                &C::ScalarExt::zero(),
+                                                idx,
+                                                rot_scale,
+                                                isize,
+                                            )
+                                        })
                                     })
                                     .collect();
 
-                                inputs_values_for_extended_domain.extend_from_slice(&inputs_values);
-                            }
-
-                            let num_threads = rayon::current_num_threads();
-                            let chunk_size =
-                                (inputs_values_for_extended_domain.len() + num_threads - 1)
-                                    / num_threads;
-                            rayon::scope(|scope| {
-                                for chunk in
-                                    inputs_values_for_extended_domain.chunks_mut(chunk_size)
-                                {
-                                    scope.spawn(|_| {
-                                        chunk.batch_invert();
-                                    })
-                                }
+                            parallelize(&mut inputs_values_for_extended_domain, |values, _| {
+                                values.batch_invert();
                             });
 
-                            // The outer vector has capacity domain.extended_len()
-                            // The inner vector has capacity self.lookups[n].0.len()
-                            let inputs_inv_sums: Vec<Vec<_>> = inputs_values_for_extended_domain
-                                .chunks_exact(self.lookups[n].0.len())
-                                .map(|c| c.to_vec())
-                                .collect();
-                            inputs_inv_sums
+                            let inputs_len = inputs_lookup_evaluator.len();
+
+                            (0..size)
+                                .into_par_iter()
+                                .map(|i| {
+                                    (0..inputs_len)
+                                        .into_iter()
+                                        .map(|j| inputs_values_for_extended_domain[j * size + i])
+                                        .fold(C::Scalar::zero(), |acc, x| acc + x)
+                                })
+                                .collect::<Vec<_>>()
                         })
                         .collect();
 
@@ -596,9 +585,11 @@ impl<C: CurveAffine> Evaluator<C> {
                             φ_i(X) = f_i(X) + beta
                             τ(X) = t(X) + beta
                             LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
-                            RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+                            RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))      (1)
                                 = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
                                 = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
+
+                                = ∑_i τ(X) * Π_{j != i} φ_j(X) - m(X) * Π(φ_i(X))        (2)
                         */
                         parallelize(&mut values, |values, start| {
                             let (inputs_lookup_evaluator, table_lookup_evaluator) =
@@ -641,10 +632,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .fold(C::Scalar::one(), |acc, input| acc * input);
 
                                 // f_i(X) + beta at ω^idx
-                                let fi_inverses = &inputs_inv_sum[n][idx];
-                                let inputs_inv_sum = fi_inverses
-                                    .iter()
-                                    .fold(C::Scalar::zero(), |acc, input| acc + input);
+                                let inv_sum: C::Scalar = inputs_inv_sum[n][idx];
 
                                 // t(X) + beta
                                 let table_value = table_lookup_evaluator.evaluate(
@@ -674,7 +662,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                     //   τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
                                     // = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
                                     // = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
-                                    inputs_prod * (table_value * inputs_inv_sum - m_coset[idx])
+                                    inputs_prod * (table_value * inv_sum - m_coset[idx])
                                 };
 
                                 // phi[0] = 0

@@ -518,17 +518,21 @@ impl<C: CurveAffine> Evaluator<C> {
                         .iter()
                         .map(|lookup| {
                             let (inputs_lookup_evaluator, _) = lookup;
-                            let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
-                                .iter()
-                                .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
-                                .collect();
 
-                            let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
-                                inputs_lookup_evaluator
-                                    .iter()
-                                    .zip(inputs_eval_data.iter_mut())
-                                    .flat_map(|(input_lookup_evaluator, input_eval_data)| {
-                                        (0..size).into_par_iter().map(|idx| {
+                            let inputs_values_for_extended_domain: Vec<Vec<C::Scalar>> = (0..size)
+                                .into_par_iter()
+                                .map(|idx| {
+                                    let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
+                                        .iter()
+                                        .map(|input_lookup_evaluator| {
+                                            input_lookup_evaluator.instance()
+                                        })
+                                        .collect();
+
+                                    inputs_lookup_evaluator
+                                        .iter()
+                                        .zip(inputs_eval_data.iter_mut())
+                                        .map(|(input_lookup_evaluator, input_eval_data)| {
                                             input_lookup_evaluator.evaluate(
                                                 input_eval_data,
                                                 fixed,
@@ -545,7 +549,13 @@ impl<C: CurveAffine> Evaluator<C> {
                                                 isize,
                                             )
                                         })
-                                    })
+                                        .collect()
+                                })
+                                .collect();
+                            let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
+                                inputs_values_for_extended_domain
+                                    .into_iter()
+                                    .flatten()
                                     .collect();
 
                             parallelize(&mut inputs_values_for_extended_domain, |values, _| {
@@ -557,9 +567,9 @@ impl<C: CurveAffine> Evaluator<C> {
                             (0..size)
                                 .into_par_iter()
                                 .map(|i| {
-                                    (0..inputs_len)
-                                        .into_iter()
-                                        .map(|j| inputs_values_for_extended_domain[j * size + i])
+                                    inputs_values_for_extended_domain
+                                        [i * inputs_len..(i + 1) * inputs_len]
+                                        .iter()
                                         .fold(C::Scalar::zero(), |acc, x| acc + x)
                                 })
                                 .collect::<Vec<_>>()

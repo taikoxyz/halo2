@@ -528,7 +528,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .iter()
                                     .zip(inputs_eval_data.iter_mut())
                                     .flat_map(|(input_lookup_evaluator, input_eval_data)| {
-                                        (0..size).into_iter().map(|idx| {
+                                        (0..size).into_par_iter().map(|idx| {
                                             input_lookup_evaluator.evaluate(
                                                 input_eval_data,
                                                 fixed,

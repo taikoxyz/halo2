@@ -23,7 +23,9 @@ use rayon::prelude::ParallelIterator;
 use std::any::TypeId;
 use std::convert::TryInto;
 use std::num::ParseIntError;
+use std::process::exit;
 use std::slice;
+use std::sync::atomic::fence;
 use std::{
     collections::BTreeMap,
     iter,
@@ -513,6 +515,7 @@ impl<C: CurveAffine> Evaluator<C> {
 
                     // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + beta)
                     // The outer vector has capacity self.lookups.len()
+                    #[cfg(not(feature = "logup_skip_inv"))]
                     let inputs_inv_sum: Vec<Vec<_>> = self
                         .lookups
                         .iter()
@@ -641,9 +644,6 @@ impl<C: CurveAffine> Evaluator<C> {
                                     .iter()
                                     .fold(C::Scalar::one(), |acc, input| acc * input);
 
-                                // f_i(X) + beta at ω^idx
-                                let inv_sum: C::Scalar = inputs_inv_sum[n][idx];
-
                                 // t(X) + beta
                                 let table_value = table_lookup_evaluator.evaluate(
                                     &mut table_eval_data,
@@ -668,7 +668,25 @@ impl<C: CurveAffine> Evaluator<C> {
                                     table_value * inputs_prod * (phi_coset[r_next] - phi_coset[idx])
                                 };
 
+                                #[cfg(feature = "logup_skip_inv")]
                                 let rhs = {
+                                    //   τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
+                                    // = ∑_i τ(X) * Π_{j != i} φ_j(X) - m(X) * Π(φ_i(X))
+                                    let inputs = (0..inputs_value.len())
+                                        .map(|i| {
+                                            inputs_value
+                                                .iter()
+                                                .enumerate()
+                                                .filter(|(j, _)| *j != i)
+                                                .fold(C::Scalar::one(), |acc, (_, x)| acc * *x)
+                                        })
+                                        .fold(C::Scalar::zero(), |acc, x| acc + x);
+                                    inputs * table_value - inputs_prod * m_coset[idx]
+                                };
+                                #[cfg(not(feature = "logup_skip_inv"))]
+                                let rhs = {
+                                    // ∑ 1 / (f_i(X) + beta) at ω^idx
+                                    let inv_sum: C::Scalar = inputs_inv_sum[n][idx];
                                     //   τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))
                                     // = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
                                     // = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))

@@ -35,7 +35,6 @@ pub struct Column<C: ColumnType> {
 }
 
 impl<C: ColumnType> Column<C> {
-    #[cfg(test)]
     pub(crate) fn new(index: usize, column_type: C) -> Self {
         Column { index, column_type }
     }
@@ -352,11 +351,10 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 /// row when required:
 /// ```
 /// use halo2_proofs::{
-///     arithmetic::FieldExt,
 ///     circuit::{Chip, Layouter, Value},
 ///     plonk::{Advice, Column, Error, Selector},
 /// };
-/// # use ff::Field;
+/// use ff::Field;
 /// # use halo2_proofs::plonk::Fixed;
 ///
 /// struct Config {
@@ -365,12 +363,12 @@ impl TryFrom<Column<Any>> for Column<Instance> {
 ///     s: Selector,
 /// }
 ///
-/// fn circuit_logic<F: FieldExt, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
+/// fn circuit_logic<F: Field, C: Chip<F>>(chip: C, mut layouter: impl Layouter<F>) -> Result<(), Error> {
 ///     let config = chip.config();
 ///     # let config: Config = todo!();
 ///     layouter.assign_region(|| "bar", |mut region| {
-///         region.assign_advice(|| "a", config.a, 0, || Value::known(F::one()))?;
-///         region.assign_advice(|| "a", config.b, 1, || Value::known(F::one()))?;
+///         region.assign_advice(|| "a", config.a, 0, || Value::known(F::ONE))?;
+///         region.assign_advice(|| "a", config.b, 1, || Value::known(F::ONE))?;
 ///         config.s.enable(&mut region, 1)
 ///     })?;
 ///     Ok(())
@@ -412,6 +410,10 @@ impl FixedQuery {
     pub fn column_index(&self) -> usize {
         self.column_index
     }
+    /// Column
+    pub fn column(&self) -> Column<Fixed> {
+        Column::new(self.column_index, Fixed)
+    }
 
     /// Rotation of this query
     pub fn rotation(&self) -> Rotation {
@@ -440,6 +442,10 @@ impl AdviceQuery {
     /// Column index
     pub fn column_index(&self) -> usize {
         self.column_index
+    }
+    /// Column
+    pub fn column(&self) -> Column<Advice> {
+        Column::new(self.column_index, Advice { phase: self.phase })
     }
 
     /// Rotation of this query
@@ -579,6 +585,12 @@ pub trait Assignment<F: Field>: Sized + Send {
     fn merge(&mut self, _sub_cs: Vec<Self>) -> Result<(), Error> {
         unimplemented!("merge is not implemented by default")
     }
+
+    /// Get the last assigned value of an advice cell.
+    fn query_advice(&self, column: Column<Advice>, row: usize) -> Result<F, Error>;
+
+    /// Get the last assigned value of a fixed cell.
+    fn query_fixed(&self, column: Column<Fixed>, row: usize) -> Result<F, Error>;
 
     /// Queries the cell of an instance column at a particular absolute row.
     ///

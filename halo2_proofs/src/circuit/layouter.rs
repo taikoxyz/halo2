@@ -14,7 +14,7 @@ use crate::plonk::{Advice, Any, Assigned, Column, Error, Fixed, Instance, Select
 /// This trait is used for implementing region assignments:
 ///
 /// ```ignore
-/// impl<'a, F: FieldExt, C: Chip<F>, CS: Assignment<F> + 'a> Layouter<C> for MyLayouter<'a, C, CS> {
+/// impl<'a, F: Field, C: Chip<F>, CS: Assignment<F> + 'a> Layouter<C> for MyLayouter<'a, C, CS> {
 ///     fn assign_region(
 ///         &mut self,
 ///         assignment: impl FnOnce(Region<'_, F, C>) -> Result<(), Error>,
@@ -57,6 +57,12 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
         annotation: &'v (dyn Fn() -> String + 'v),
         column: Column<Any>,
     );
+
+    /// Get the last assigned value of an advice cell.
+    fn query_advice(&self, column: Column<Advice>, offset: usize) -> Result<F, Error>;
+
+    /// Get the last assigned value of a fixed cell.
+    fn query_fixed(&self, column: Column<Fixed>, offset: usize) -> Result<F, Error>;
 
     /// Assign an advice column value (witness)
     fn assign_advice<'v>(
@@ -112,6 +118,9 @@ pub trait RegionLayouter<F: Field>: fmt::Debug {
     ///
     /// Returns an error if either of the cells is not within the given permutation.
     fn constrain_equal(&mut self, left: Cell, right: Cell) -> Result<(), Error>;
+
+    /// Return the offset of a row within the overall circuit.
+    fn global_offset(&self, row_offset: usize) -> usize;
 }
 
 /// Helper trait for implementing a custom [`Layouter`].
@@ -219,6 +228,14 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
         Ok(())
     }
 
+    fn query_advice(&self, _column: Column<Advice>, _offset: usize) -> Result<F, Error> {
+        Ok(F::ZERO)
+    }
+
+    fn query_fixed(&self, _column: Column<Fixed>, _offset: usize) -> Result<F, Error> {
+        Ok(F::ZERO)
+    }
+
     fn assign_advice<'v>(
         &'v mut self,
         _: &'v (dyn Fn() -> String + 'v),
@@ -301,5 +318,9 @@ impl<F: Field> RegionLayouter<F> for RegionShape {
     fn constrain_equal(&mut self, _left: Cell, _right: Cell) -> Result<(), Error> {
         // Equality constraints don't affect the region shape.
         Ok(())
+    }
+
+    fn global_offset(&self, _row_offset: usize) -> usize {
+        0
     }
 }

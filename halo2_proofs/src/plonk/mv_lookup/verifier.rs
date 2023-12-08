@@ -5,12 +5,12 @@ use super::super::{
 };
 use super::Argument;
 use crate::{
-    arithmetic::{CurveAffine, FieldExt},
+    arithmetic::CurveAffine,
     plonk::{Error, VerifyingKey},
     poly::{commitment::MSM, Rotation, VerifierQuery},
     transcript::{EncodedChallenge, TranscriptRead},
 };
-use ff::{BatchInvert, Field};
+use ff::{BatchInvert, Field, PrimeField, WithSmallOrderMulGroup};
 
 pub struct PreparedCommitments<C: CurveAffine> {
     m_commitment: C,
@@ -28,7 +28,7 @@ pub struct Evaluated<C: CurveAffine> {
     m_eval: C::Scalar,
 }
 
-impl<F: FieldExt> Argument<F> {
+impl<F: PrimeField + WithSmallOrderMulGroup<3>> Argument<F> {
     pub(in crate::plonk) fn read_prepared_commitments<
         C: CurveAffine,
         E: EncodedChallenge<C>,
@@ -92,7 +92,7 @@ impl<C: CurveAffine> Evaluated<C> {
         instance_evals: &[C::Scalar],
         challenges: &[C::Scalar],
     ) -> impl Iterator<Item = C::Scalar> + 'a {
-        let active_rows = C::Scalar::one() - (l_last + l_blind);
+        let active_rows = C::Scalar::ZERO - (l_last + l_blind);
 
         /*
             φ_i(X) = f_i(X) + beta
@@ -119,7 +119,7 @@ impl<C: CurveAffine> Evaluated<C> {
                             &|a, scalar| a * &scalar,
                         )
                     })
-                    .fold(C::Scalar::zero(), |acc, eval| acc * &*theta + &eval)
+                    .fold(C::Scalar::ZERO, |acc, eval| acc * &*theta + &eval)
             };
 
             // φ_i(X) = f_i(X) + beta
@@ -133,15 +133,11 @@ impl<C: CurveAffine> Evaluated<C> {
 
             let tau = t_eval + *beta;
             // Π(φ_i(X))
-            let prod_fi = f_evals
-                .iter()
-                .fold(C::Scalar::one(), |acc, eval| acc * eval);
+            let prod_fi = f_evals.iter().fold(C::Scalar::ZERO, |acc, eval| acc * eval);
             // ∑ 1/(φ_i(X))
             let sum_inv_fi = {
                 f_evals.batch_invert();
-                f_evals
-                    .iter()
-                    .fold(C::Scalar::zero(), |acc, eval| acc + eval)
+                f_evals.iter().fold(C::Scalar::ZERO, |acc, eval| acc + eval)
             };
 
             // LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))

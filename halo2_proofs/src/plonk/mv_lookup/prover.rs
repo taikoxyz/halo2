@@ -5,7 +5,7 @@ use super::super::{
 use super::Argument;
 use crate::plonk::evaluation::evaluate;
 use crate::{
-    arithmetic::{eval_polynomial, parallelize, CurveAffine, FieldExt},
+    arithmetic::{eval_polynomial, parallelize, CurveAffine},
     poly::{
         commitment::{Blind, Params},
         Coeff, EvaluationDomain, ExtendedLagrangeCoeff, LagrangeCoeff, Polynomial, ProverQuery,
@@ -15,7 +15,7 @@ use crate::{
 };
 use ark_std::{end_timer, start_timer};
 use blake2b_simd::Hash;
-use ff::{BitViewSized, PrimeField, PrimeFieldBits};
+use ff::{BitViewSized, PrimeField, PrimeFieldBits, WithSmallOrderMulGroup};
 use group::{
     ff::{BatchInvert, Field},
     Curve,
@@ -53,7 +53,7 @@ pub(in crate::plonk) struct Evaluated<C: CurveAffine> {
     constructed: Committed<C>,
 }
 
-impl<F: FieldExt> Argument<F> {
+impl<F: PrimeField + WithSmallOrderMulGroup<3> + Ord> Argument<F> {
     pub(in crate::plonk) fn prepare<
         'a,
         'params: 'a,
@@ -169,14 +169,14 @@ impl<F: FieldExt> Argument<F> {
                 .collect::<Vec<_>>();
             assert_eq!(invalid_ms.len(), blinding_factors);
             for mi in invalid_ms {
-                assert_eq!(*mi, C::Scalar::zero());
+                assert_eq!(*mi, C::Scalar::ZERO);
             }
 
             // check sums
             let alpha = C::Scalar::random(&mut rng);
             let cs_input_sum =
                 |compressed_input_expression: &Polynomial<C::Scalar, LagrangeCoeff>| {
-                    let mut lhs_sum = C::Scalar::zero();
+                    let mut lhs_sum = C::Scalar::ZERO;
                     for &fi in compressed_input_expression
                         .iter()
                         .take(params.n() as usize - blinding_factors - 1)
@@ -187,13 +187,13 @@ impl<F: FieldExt> Argument<F> {
                     lhs_sum
                 };
 
-            let mut lhs_sum = C::Scalar::zero();
+            let mut lhs_sum = C::Scalar::ZERO;
 
             for compressed_input_expression in compressed_inputs_expressions.iter() {
                 lhs_sum += cs_input_sum(compressed_input_expression);
             }
 
-            let mut rhs_sum = C::Scalar::zero();
+            let mut rhs_sum = C::Scalar::ZERO;
             for (&ti, &mi) in compressed_table_expression.iter().zip(m_values.iter()) {
                 rhs_sum += mi * (ti + alpha).invert().unwrap();
             }
@@ -244,9 +244,9 @@ impl<C: CurveAffine> Prepared<C> {
 
         // ∑ 1/(φ_i(X))
         let inputs_log_drv_time = start_timer!(|| "inputs_log_derivative");
-        let mut inputs_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
+        let mut inputs_log_derivatives = vec![C::Scalar::ZERO; params.n() as usize];
         for compressed_input_expression in self.compressed_inputs_expressions.iter() {
-            let mut input_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
+            let mut input_log_derivatives = vec![C::Scalar::ZERO; params.n() as usize];
 
             parallelize(
                 &mut input_log_derivatives,
@@ -272,7 +272,7 @@ impl<C: CurveAffine> Prepared<C> {
 
         // 1 / τ(X)
         let table_log_drv_time = start_timer!(|| "table log derivative");
-        let mut table_log_derivatives = vec![C::Scalar::zero(); params.n() as usize];
+        let mut table_log_derivatives = vec![C::Scalar::ZERO; params.n() as usize];
         parallelize(
             &mut table_log_derivatives,
             |table_log_derivatives, start| {
@@ -292,7 +292,7 @@ impl<C: CurveAffine> Prepared<C> {
 
         let log_drv_diff_time = start_timer!(|| "log derivatives diff");
         // (Σ 1/(φ_i(X)) - m(X) / τ(X))
-        let mut log_derivatives_diff = vec![C::Scalar::zero(); params.n() as usize];
+        let mut log_derivatives_diff = vec![C::Scalar::ZERO; params.n() as usize];
         parallelize(&mut log_derivatives_diff, |log_derivatives_diff, start| {
             for (((log_derivative_diff, fi), ti), mi) in log_derivatives_diff
                 .iter_mut()
@@ -322,8 +322,8 @@ impl<C: CurveAffine> Prepared<C> {
                 chunk
             };
             let num_chunks = (active_size as usize + chunk - 1) / chunk;
-            let mut segment_sum = vec![C::Scalar::zero(); num_chunks];
-            let mut grand_sum = iter::once(C::Scalar::zero())
+            let mut segment_sum = vec![C::Scalar::ZERO; num_chunks];
+            let mut grand_sum = iter::once(C::Scalar::ZERO)
                 .chain(log_derivatives_diff)
                 .take(active_size)
                 .collect::<Vec<_>>();
@@ -370,7 +370,7 @@ impl<C: CurveAffine> Prepared<C> {
             for i in 0..u {
                 // Π(φ_i(X))
                 let fi_prod = || {
-                    let mut prod = C::Scalar::one();
+                    let mut prod = C::Scalar::ONE;
                     for compressed_input_expression in self.compressed_inputs_expressions.iter() {
                         prod *= *beta + compressed_input_expression[i];
                     }
@@ -379,7 +379,7 @@ impl<C: CurveAffine> Prepared<C> {
                 };
 
                 let fi_log_derivative = || {
-                    let mut sum = C::Scalar::zero();
+                    let mut sum = C::Scalar::ZERO;
                     for compressed_input_expression in self.compressed_inputs_expressions.iter() {
                         sum += (*beta + compressed_input_expression[i]).invert().unwrap();
                     }
@@ -405,10 +405,10 @@ impl<C: CurveAffine> Prepared<C> {
                                     .unwrap())
                 };
 
-                assert_eq!(lhs - rhs, C::Scalar::zero());
+                assert_eq!(lhs - rhs, C::Scalar::ZERO);
             }
 
-            assert_eq!(phi[u], C::Scalar::zero());
+            assert_eq!(phi[u], C::Scalar::ZERO);
         }
 
         let grand_sum_blind = Blind(C::Scalar::random(rng));
@@ -464,17 +464,17 @@ impl<C: CurveAffine> Evaluated<C> {
             .chain(Some(ProverQuery {
                 point: *x,
                 poly: &self.constructed.phi_poly,
-                blind: Blind(C::Scalar::zero()),
+                blind: Blind(C::Scalar::ZERO),
             }))
             .chain(Some(ProverQuery {
                 point: x_next,
                 poly: &self.constructed.phi_poly,
-                blind: Blind(C::Scalar::zero()),
+                blind: Blind(C::Scalar::ZERO),
             }))
             .chain(Some(ProverQuery {
                 point: *x,
                 poly: &self.constructed.m_poly,
-                blind: Blind(C::Scalar::zero()),
+                blind: Blind(C::Scalar::ZERO),
             }))
     }
 }

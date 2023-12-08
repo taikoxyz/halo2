@@ -1,4 +1,4 @@
-use ff::{Field, PrimeField};
+use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::Curve;
 use halo2curves::CurveExt;
 use rand_core::RngCore;
@@ -20,7 +20,7 @@ use super::{
     ChallengeY, Error, Expression, ProvingKey,
 };
 use crate::{
-    arithmetic::{eval_polynomial, CurveAffine, FieldExt},
+    arithmetic::{eval_polynomial, CurveAffine},
     circuit::Value,
     plonk::Assigned,
     poly::{
@@ -58,18 +58,8 @@ pub fn create_proof<
     transcript: &mut T,
 ) -> Result<(), Error>
 where
-    Scheme::Scalar: PrimeField,
+    Scheme::Scalar: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Ord,
 {
-    #[cfg(feature = "counter")]
-    {
-        use crate::{FFT_COUNTER, MSM_COUNTER};
-        use std::collections::BTreeMap;
-
-        // reset counters at the beginning of the prove
-        *MSM_COUNTER.lock().unwrap() = BTreeMap::new();
-        *FFT_COUNTER.lock().unwrap() = BTreeMap::new();
-    }
-
     for instance in instances.iter() {
         if instance.len() != pk.vk.cs.num_instance_columns {
             return Err(Error::InvalidInstances);
@@ -160,6 +150,7 @@ where
         advice: Vec<&'a mut [Assigned<F>]>,
         challenges: &'a HashMap<usize, F>,
         instances: &'a [&'a [F]],
+        fixed_values: &'a [Polynomial<F, LagrangeCoeff>],
         rw_rows: Range<usize>,
         usable_rows: RangeTo<usize>,
         _marker: std::marker::PhantomData<F>,
@@ -243,6 +234,7 @@ where
                     advice,
                     challenges: self.challenges,
                     instances: self.instances,
+                    fixed_values: self.fixed_values,
                     rw_rows: sub_range.clone(),
                     usable_rows: self.usable_rows,
                     _marker: Default::default(),
@@ -262,6 +254,30 @@ where
             AR: Into<String>,
         {
             // Do nothing
+        }
+
+        /// Get the last assigned value of a cell.
+        fn query_advice(&self, column: Column<Advice>, row: usize) -> Result<F, Error> {
+            if !self.usable_rows.contains(&row) {
+                return Err(Error::not_enough_rows_available(self.k));
+            }
+            if !self.rw_rows.contains(&row) {
+                log::error!("query_advice: {:?}, row: {}", column, row);
+                return Err(Error::Synthesis);
+            }
+            self.advice
+                .get(column.index())
+                .and_then(|v| v.get(row - self.rw_rows.start))
+                .map(|v| v.evaluate())
+                .ok_or(Error::BoundsFailure)
+        }
+
+        fn query_fixed(&self, column: Column<Fixed>, row: usize) -> Result<F, Error> {
+            self.fixed_values
+                .get(column.index())
+                .and_then(|v| v.get(row))
+                .copied()
+                .ok_or(Error::BoundsFailure)
         }
 
         fn query_instance(&self, column: Column<Instance>, row: usize) -> Result<Value<F>, Error> {
@@ -417,6 +433,7 @@ where
                     advice_vec,
                     advice: advice_slice,
                     instances,
+                    fixed_values: &pk.fixed_values,
                     challenges: &challenges,
                     // The prover will not be allowed to assign values to advice
                     // cells that exist within inactive rows, which include some
@@ -477,7 +494,7 @@ where
                     //*cell = C::Scalar::one();
                     //}
                     let idx = advice_values.len() - 1;
-                    advice_values[idx] = Scheme::Scalar::one();
+                    advice_values[idx] = Scheme::Scalar::ONE;
                 }
 
                 // Compute commitments to advice column polynomials
@@ -777,18 +794,6 @@ where
         .chain(pk.permutation.open(x))
         // We query the h(X) polynomial at x
         .chain(vanishing.open(x));
-
-    #[cfg(feature = "counter")]
-    {
-        use crate::{FFT_COUNTER, MSM_COUNTER};
-        use std::collections::BTreeMap;
-        println!("MSM_COUNTER: {:?}", MSM_COUNTER.lock().unwrap());
-        println!("FFT_COUNTER: {:?}", *FFT_COUNTER.lock().unwrap());
-
-        // reset counters at the end of the proving
-        *MSM_COUNTER.lock().unwrap() = BTreeMap::new();
-        *FFT_COUNTER.lock().unwrap() = BTreeMap::new();
-    }
 
     let prover = P::new(params);
     prover

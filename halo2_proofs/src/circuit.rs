@@ -4,11 +4,8 @@ use std::{convert::TryInto, fmt, marker::PhantomData};
 
 use ff::Field;
 
-use crate::{
-    arithmetic::FieldExt,
-    plonk::{
-        Advice, Any, Assigned, Challenge, Column, Error, Fixed, Instance, Selector, TableColumn,
-    },
+use crate::plonk::{
+    Advice, Any, Assigned, Challenge, Column, Error, Fixed, Instance, Selector, TableColumn,
 };
 
 mod value;
@@ -28,7 +25,7 @@ pub mod layouter;
 /// The chip also loads any fixed configuration needed at synthesis time
 /// using its own implementation of `load`, and stores it in [`Chip::Loaded`].
 /// This can be accessed via [`Chip::loaded`].
-pub trait Chip<F: FieldExt>: Sized {
+pub trait Chip<F: Field>: Sized {
     /// A type that holds the configuration for this chip, and any other state it may need
     /// during circuit synthesis, that can be derived during [`Circuit::configure`].
     ///
@@ -221,6 +218,16 @@ impl<'r, F: Field> Region<'r, F> {
             .name_column(&|| annotation().into(), column.into());
     }
 
+    /// Get the last assigned value of an advice cell.
+    pub fn query_advice(&self, column: Column<Advice>, offset: usize) -> Result<F, Error> {
+        self.region.query_advice(column, offset)
+    }
+
+    /// Get the last assigned value of a fixed cell.
+    pub fn query_fixed(&self, column: Column<Fixed>, offset: usize) -> Result<F, Error> {
+        self.region.query_fixed(column, offset)
+    }
+
     /// Assign an advice column value (witness).
     ///
     /// Even though `to` has `FnMut` bounds, it is guaranteed to be called at most once.
@@ -366,6 +373,11 @@ impl<'r, F: Field> Region<'r, F> {
     /// has not been enabled.
     pub fn constrain_equal(&mut self, left: Cell, right: Cell) -> Result<(), Error> {
         self.region.constrain_equal(left, right)
+    }
+
+    /// Return the offset of a row within the overall circuit.
+    pub fn global_offset(&self, row_offset: usize) -> usize {
+        self.region.global_offset(row_offset)
     }
 }
 

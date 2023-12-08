@@ -83,6 +83,7 @@ impl<'a, F: Field, CS: Assignment<F> + 'a> SingleChipLayouter<'a, F, CS> {
         Ok(ret)
     }
 
+    #[allow(dead_code)]
     fn fork(&self, sub_cs: Vec<&'a mut CS>) -> Result<Vec<Self>, Error> {
         Ok(sub_cs
             .into_iter()
@@ -480,6 +481,18 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> RegionLayouter<F>
         self.layouter.cs.annotate_column(annotation, column);
     }
 
+    fn query_advice(&self, column: Column<Advice>, offset: usize) -> Result<F, Error> {
+        self.layouter
+            .cs
+            .query_advice(column, *self.layouter.regions[*self.region_index] + offset)
+    }
+
+    fn query_fixed(&self, column: Column<Fixed>, offset: usize) -> Result<F, Error> {
+        self.layouter
+            .cs
+            .query_fixed(column, *self.layouter.regions[*self.region_index] + offset)
+    }
+
     fn assign_advice<'v>(
         &'v mut self,
         annotation: &'v (dyn Fn() -> String + 'v),
@@ -572,6 +585,10 @@ impl<'r, 'a, F: Field, CS: Assignment<F> + 'a> RegionLayouter<F>
         )?;
 
         Ok(())
+    }
+
+    fn global_offset(&self, row_offset: usize) -> usize {
+        *self.layouter.regions[*self.region_index] + row_offset
     }
 }
 

@@ -1,15 +1,14 @@
 use super::super::{util::*, Gate};
-use halo2_proofs::{
-    arithmetic::FieldExt,
-    plonk::{Constraint, Constraints, Expression},
-};
+use crate::utilities::range_check;
+use ff::PrimeField;
+use halo2_proofs::plonk::{Constraint, Constraints, Expression};
 use std::marker::PhantomData;
 
-pub struct CompressionGate<F: FieldExt>(PhantomData<F>);
+pub struct CompressionGate<F: PrimeField>(PhantomData<F>);
 
-impl<F: FieldExt> CompressionGate<F> {
+impl<F: PrimeField> CompressionGate<F> {
     fn ones() -> Expression<F> {
-        Expression::Constant(F::one())
+        Expression::Constant(F::ONE)
     }
 
     // Decompose `A,B,C,D` words
@@ -59,16 +58,16 @@ impl<F: FieldExt> CompressionGate<F> {
             + c_mid * F::from(1 << 16)
             + c_hi * F::from(1 << 19)
             + d * F::from(1 << 22)
-            + word_lo * (-F::one())
-            + word_hi * F::from(1 << 16) * (-F::one());
+            + word_lo * (-F::ONE)
+            + word_hi * F::from(1 << 16) * (-F::ONE);
         let spread_check = spread_a
             + spread_b * F::from(1 << 4)
             + spread_c_lo * F::from(1 << 26)
             + spread_c_mid * F::from(1 << 32)
             + spread_c_hi * F::from(1 << 38)
             + spread_d * F::from(1 << 44)
-            + spread_word_lo * (-F::one())
-            + spread_word_hi * F::from(1 << 32) * (-F::one());
+            + spread_word_lo * (-F::ONE)
+            + spread_word_hi * F::from(1 << 32) * (-F::ONE);
 
         Constraints::with_selector(
             s_decompose_abcd,
@@ -130,16 +129,16 @@ impl<F: FieldExt> CompressionGate<F> {
             + b_hi * F::from(1 << 8)
             + c * F::from(1 << 11)
             + d * F::from(1 << 25)
-            + word_lo * (-F::one())
-            + word_hi * F::from(1 << 16) * (-F::one());
+            + word_lo * (-F::ONE)
+            + word_hi * F::from(1 << 16) * (-F::ONE);
         let spread_check = spread_a_lo
             + spread_a_hi * F::from(1 << 6)
             + spread_b_lo * F::from(1 << 12)
             + spread_b_hi * F::from(1 << 16)
             + spread_c * F::from(1 << 22)
             + spread_d * F::from(1 << 50)
-            + spread_word_lo * (-F::one())
-            + spread_word_hi * F::from(1 << 32) * (-F::one());
+            + spread_word_lo * (-F::ONE)
+            + spread_word_hi * F::from(1 << 32) * (-F::ONE);
 
         Constraints::with_selector(
             s_decompose_efgh,
@@ -189,7 +188,7 @@ impl<F: FieldExt> CompressionGate<F> {
             + spread_c_mid * F::from(1 << 52)
             + spread_c_hi * F::from(1 << 58);
         let xor = xor_0 + xor_1 + xor_2;
-        let check = spread_witness + (xor * -F::one());
+        let check = spread_witness + (xor * -F::ONE);
 
         Some(("s_upper_sigma_0", s_upper_sigma_0 * check))
     }
@@ -233,7 +232,7 @@ impl<F: FieldExt> CompressionGate<F> {
             + spread_b_hi * F::from(1 << 30)
             + spread_c * F::from(1 << 36);
         let xor = xor_0 + xor_1 + xor_2;
-        let check = spread_witness + (xor * -F::one());
+        let check = spread_witness + (xor * -F::ONE);
 
         Some(("s_upper_sigma_1", s_upper_sigma_1 * check))
     }
@@ -259,7 +258,7 @@ impl<F: FieldExt> CompressionGate<F> {
         let rhs_odd = spread_p0_odd + spread_p1_odd * F::from(1 << 32);
         let rhs = rhs_even + rhs_odd * F::from(2);
 
-        let check = lhs + rhs * -F::one();
+        let check = lhs + rhs * -F::ONE;
 
         Some(("s_ch", s_ch * check))
     }
@@ -286,9 +285,9 @@ impl<F: FieldExt> CompressionGate<F> {
         let neg_check = {
             let evens = Self::ones() * F::from(MASK_EVEN_32 as u64);
             // evens - spread_e_lo = spread_e_neg_lo
-            let lo_check = spread_e_neg_lo.clone() + spread_e_lo + (evens.clone() * (-F::one()));
+            let lo_check = spread_e_neg_lo.clone() + spread_e_lo + (evens.clone() * (-F::ONE));
             // evens - spread_e_hi = spread_e_neg_hi
-            let hi_check = spread_e_neg_hi.clone() + spread_e_hi + (evens * (-F::one()));
+            let hi_check = spread_e_neg_hi.clone() + spread_e_hi + (evens * (-F::ONE));
 
             std::iter::empty()
                 .chain(Some(("lo_check", lo_check)))
@@ -414,30 +413,28 @@ impl<F: FieldExt> CompressionGate<F> {
     #[allow(clippy::too_many_arguments)]
     pub fn s_digest(
         s_digest: Expression<F>,
-        lo_0: Expression<F>,
-        hi_0: Expression<F>,
-        word_0: Expression<F>,
-        lo_1: Expression<F>,
-        hi_1: Expression<F>,
-        word_1: Expression<F>,
-        lo_2: Expression<F>,
-        hi_2: Expression<F>,
-        word_2: Expression<F>,
-        lo_3: Expression<F>,
-        hi_3: Expression<F>,
-        word_3: Expression<F>,
+        digest_lo: Expression<F>,
+        digest_hi: Expression<F>,
+        digest_word: Expression<F>,
+        final_lo: Expression<F>,
+        final_hi: Expression<F>,
+        initial_lo: Expression<F>,
+        initial_hi: Expression<F>,
+        digest_carry: Expression<F>,
     ) -> impl IntoIterator<Item = Constraint<F>> {
-        let check_lo_hi = |lo: Expression<F>, hi: Expression<F>, word: Expression<F>| {
-            lo + hi * F::from(1 << 16) - word
-        };
+        let check_lo_hi = digest_lo.clone() + digest_hi.clone() * F::from(1 << 16) - digest_word;
+
+        let check =
+            digest_carry.clone() * F::from(1 << 32) + digest_hi * F::from(1 << 16) + digest_lo
+                - (final_hi + initial_hi) * F::from(1 << 16)
+                - (final_lo + initial_lo);
 
         Constraints::with_selector(
             s_digest,
             [
-                ("check_lo_hi_0", check_lo_hi(lo_0, hi_0, word_0)),
-                ("check_lo_hi_1", check_lo_hi(lo_1, hi_1, word_1)),
-                ("check_lo_hi_2", check_lo_hi(lo_2, hi_2, word_2)),
-                ("check_lo_hi_3", check_lo_hi(lo_3, hi_3, word_3)),
+                ("check digest lo_hi", check_lo_hi),
+                ("digest check", check),
+                ("check carry bit", range_check(digest_carry, 2)),
             ],
         )
     }

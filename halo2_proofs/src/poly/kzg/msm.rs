@@ -2,11 +2,14 @@ use std::fmt::Debug;
 
 use super::commitment::{KZGCommitmentScheme, ParamsKZG};
 use crate::{
-    arithmetic::{best_multiexp, parallelize, CurveAffine},
+    arithmetic::{parallelize, CurveAffine},
     poly::commitment::MSM,
 };
 use group::{Curve, Group};
-use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
+use halo2curves::{
+    pairing::{Engine, MillerLoopResult, MultiMillerLoop},
+    zal::{H2cEngine, MsmAccel},
+};
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Clone, Default, Debug)]
@@ -66,7 +69,8 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E> {
         use group::prime::PrimeCurveAffine;
         let mut bases = vec![E::G1Affine::identity(); self.scalars.len()];
         E::G1::batch_normalize(&self.bases, &mut bases);
-        best_multiexp(&self.scalars, &bases)
+        let engine = H2cEngine::new();
+        engine.msm(&self.scalars, &bases)
     }
 
     fn bases(&self) -> Vec<E::G1> {

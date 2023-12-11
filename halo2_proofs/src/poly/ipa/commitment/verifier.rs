@@ -7,10 +7,7 @@ use group::{
 
 use super::ParamsIPA;
 use crate::poly::ipa::commitment::{IPACommitmentScheme, ParamsVerifierIPA};
-use crate::{
-    arithmetic::{best_multiexp, CurveAffine},
-    poly::ipa::strategy::GuardIPA,
-};
+use crate::{arithmetic::CurveAffine, poly::ipa::strategy::GuardIPA};
 use crate::{
     poly::{commitment::MSM, ipa::msm::MSMIPA, strategy::Guard, Error},
     transcript::{EncodedChallenge, TranscriptRead},

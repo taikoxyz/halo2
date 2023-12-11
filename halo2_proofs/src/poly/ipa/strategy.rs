@@ -6,7 +6,6 @@ use super::multiopen::VerifierIPA;
 use crate::poly::commitment::CommitmentScheme;
 use crate::transcript::TranscriptRead;
 use crate::{
-    arithmetic::best_multiexp,
     plonk::Error,
     poly::{
         commitment::MSM,
@@ -16,6 +15,7 @@ use crate::{
 };
 use ff::Field;
 use group::Curve;
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use halo2curves::CurveAffine;
 use rand_core::{OsRng, RngCore};
 
@@ -72,7 +72,8 @@ impl<'params, C: CurveAffine> GuardIPA<'params, C> {
     pub fn compute_g(&self) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
 
-        best_multiexp(&s, &self.msm.params.g).to_affine()
+        let engine = H2cEngine::new();
+        engine.msm(&s, &self.msm.params.g).to_affine()
     }
 }
 

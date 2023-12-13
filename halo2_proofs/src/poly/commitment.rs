@@ -8,6 +8,7 @@ use crate::transcript::{EncodedChallenge, TranscriptRead, TranscriptWrite};
 use ff::Field;
 use group::{Curve, Group};
 use halo2curves::{CurveAffine, CurveExt};
+use halo2curves::zal::{ZalEngine, MsmAccel};
 use rand_core::RngCore;
 use std::{
     fmt::Debug,
@@ -23,25 +24,29 @@ pub trait CommitmentScheme {
     /// Elliptic curve used to commit the application and witnesses
     type Curve: CurveAffine<ScalarExt = Self::Scalar>;
 
+    /// Execution Engine (CPU, GPU, FPGA, ...)
+    type Zal: ZalEngine + MsmAccel<Self::Curve>;
+
     /// Constant prover parameters
     type ParamsProver: for<'params> ParamsProver<
         'params,
         Self::Curve,
         ParamsVerifier = Self::ParamsVerifier,
+        Self::Zal
     >;
 
     /// Constant verifier parameters
-    type ParamsVerifier: for<'params> ParamsVerifier<'params, Self::Curve>;
+    type ParamsVerifier: for<'params> ParamsVerifier<'params, Self::Curve, Self::Zal>;
 
     /// Wrapper for parameter generator
-    fn new_params(k: u32) -> Self::ParamsProver;
+    fn new_params(k: u32, engine: &ZalEngine) -> Self::ParamsProver;
 
     /// Wrapper for parameter reader
-    fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver>;
+    fn read_params<R: io::Read>(reader: &mut R, engine: &ZalEngine) -> io::Result<Self::ParamsProver>;
 }
 
-/// Parameters for circuit sysnthesis and prover parameters.
-pub trait Params<'params, C: CurveAffine>: Sized + Clone {
+/// Parameters for circuit synthesis and prover parameters.
+pub trait Params<'params, C: CurveAffine, Zal: ZalEngine>: Sized + Clone {
     /// Multi scalar multiplication engine
     type MSM: MSM<C> + 'params;
 
@@ -71,16 +76,18 @@ pub trait Params<'params, C: CurveAffine>: Sized + Clone {
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
 
     /// Reads params from a buffer.
-    fn read<R: io::Read>(reader: &mut R) -> io::Result<Self>;
+    fn read<R: io::Read>(reader: &mut R, engine: &Zal) -> io::Result<Self>;
 }
 
 /// Parameters for circuit sysnthesis and prover parameters.
-pub trait ParamsProver<'params, C: CurveAffine>: Params<'params, C> {
+pub trait ParamsProver<'params, C: CurveAffine, Zal>: Params<'params, C, Zal>
+    where Zal: ZalEngine + MsmAccel<C>
+{
     /// Constant verifier parameters.
-    type ParamsVerifier: ParamsVerifier<'params, C>;
+    type ParamsVerifier: ParamsVerifier<'params, C, Zal>;
 
     /// Returns new instance of parameters
-    fn new(k: u32) -> Self;
+    fn new(k: u32, engine: &Zal) -> Self;
 
     /// This computes a commitment to a polynomial described by the provided
     /// slice of coefficients. The commitment may be blinded by the blinding
@@ -96,10 +103,12 @@ pub trait ParamsProver<'params, C: CurveAffine>: Params<'params, C> {
 }
 
 /// Verifier specific functionality with circuit constaints
-pub trait ParamsVerifier<'params, C: CurveAffine>: Params<'params, C> {}
+pub trait ParamsVerifier<'params, C: CurveAffine, Zal: ZalEngine>: Params<'params, C, Zal> {}
 
 /// Multi scalar multiplication engine
-pub trait MSM<C: CurveAffine>: Clone + Debug + Send + Sync {
+pub trait MSM<C: CurveAffine, Zal>: Clone + Debug + Send + Sync
+    where Zal: ZalEngine + MsmAccel<C>
+{
     /// Add arbitrary term (the scalar and the point)
     fn append_term(&mut self, scalar: C::Scalar, point: C::CurveExt);
 

@@ -59,7 +59,7 @@ impl<'com, C: CurveAffine> Query<C::Scalar> for ProverQuery<'com, C> {
     }
 }
 
-impl<'com, C: CurveAffine, M: MSM<C>> VerifierQuery<'com, C, M> {
+impl<'com, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> VerifierQuery<'com, 'zal, C, Zal, M> {
     /// Create a new verifier query based on a commitment
     pub fn new_commitment(commitment: &'com C, point: C::Scalar, eval: C::Scalar) -> Self {
         VerifierQuery {
@@ -70,7 +70,7 @@ impl<'com, C: CurveAffine, M: MSM<C>> VerifierQuery<'com, C, M> {
     }
 
     /// Create a new verifier query based on a linear combination of commitments
-    pub fn new_msm(msm: &'com M, point: C::Scalar, eval: C::Scalar) -> VerifierQuery<'com, C, M> {
+    pub fn new_msm(msm: &'com M, point: C::Scalar, eval: C::Scalar) -> VerifierQuery<'com, 'zal, C, Zal, M> {
         VerifierQuery {
             point,
             eval,
@@ -81,16 +81,16 @@ impl<'com, C: CurveAffine, M: MSM<C>> VerifierQuery<'com, C, M> {
 
 /// A polynomial query at a point
 #[derive(Debug)]
-pub struct VerifierQuery<'com, C: CurveAffine, M: MSM<C>> {
+pub struct VerifierQuery<'com, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> {
     /// point at which polynomial is queried
     pub(crate) point: C::Scalar,
     /// commitment to polynomial
-    pub(crate) commitment: CommitmentReference<'com, C, M>,
+    pub(crate) commitment: CommitmentReference<'com, 'zal, C, Zal, M>,
     /// evaluation of polynomial at query point
     pub(crate) eval: C::Scalar,
 }
 
-impl<'com, C: CurveAffine, M: MSM<C>> Clone for VerifierQuery<'com, C, M> {
+impl<'com, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> Clone for VerifierQuery<'com, 'zal, C, Zal, M> {
     fn clone(&self) -> Self {
         Self {
             point: self.point,
@@ -101,14 +101,14 @@ impl<'com, C: CurveAffine, M: MSM<C>> Clone for VerifierQuery<'com, C, M> {
 }
 
 #[derive(Clone, Debug)]
-pub enum CommitmentReference<'r, C: CurveAffine, M: MSM<C>> {
+pub enum CommitmentReference<'r, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> {
     Commitment(&'r C),
     MSM(&'r M),
 }
 
-impl<'r, C: CurveAffine, M: MSM<C>> Copy for CommitmentReference<'r, C, M> {}
+impl<'r, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> Copy for CommitmentReference<'r, 'zal, C, Zal, M> {}
 
-impl<'r, C: CurveAffine, M: MSM<C>> PartialEq for CommitmentReference<'r, C, M> {
+impl<'r, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> PartialEq for CommitmentReference<'r, 'zal, C, Zal, M> {
     #![allow(clippy::vtable_address_comparisons)]
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -121,9 +121,9 @@ impl<'r, C: CurveAffine, M: MSM<C>> PartialEq for CommitmentReference<'r, C, M> 
     }
 }
 
-impl<'com, C: CurveAffine, M: MSM<C>> Query<C::Scalar> for VerifierQuery<'com, C, M> {
+impl<'com, 'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> Query<C::Scalar> for VerifierQuery<'com, 'zal, C, Zal, M> {
     type Eval = C::Scalar;
-    type Commitment = CommitmentReference<'com, C, M>;
+    type Commitment = CommitmentReference<'com, 'zal, C, Zal, M>;
 
     fn get_point(&self) -> C::Scalar {
         self.point

@@ -11,20 +11,25 @@ use crate::transcript::{EncodedChallenge, TranscriptWrite};
 
 use ff::Field;
 use group::Curve;
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 use std::io;
 use std::marker::PhantomData;
 
 /// IPA multi-open prover
 #[derive(Debug)]
-pub struct ProverIPA<'params, C: CurveAffine> {
-    pub(crate) params: &'params ParamsIPA<C>,
+pub struct ProverIPA<'params, 'zal, C: CurveAffine, Zal>
+    where Zal: MsmAccel<C>
+{
+    pub(crate) params: &'params ParamsIPA<'zal, C, Zal>,
 }
 
-impl<'params, C: CurveAffine> Prover<'params, IPACommitmentScheme<C>> for ProverIPA<'params, C> {
+impl<'params, 'zal, C: CurveAffine, Zal> Prover<'params, IPACommitmentScheme<'zal, C, Zal>> for ProverIPA<'params, 'zal, C, Zal>
+    where Zal: MsmAccel<C>
+{
     const QUERY_INSTANCE: bool = true;
 
-    fn new(params: &'params ParamsIPA<C>) -> Self {
+    fn new(params: &'params ParamsIPA<'zal, C, Zal>) -> Self {
         Self { params }
     }
 

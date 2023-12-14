@@ -2,7 +2,7 @@ use std::{io, marker::PhantomData};
 
 use ff::FromUniformBytes;
 use group::ff::Field;
-use halo2curves::CurveAffine;
+use halo2curves::{CurveAffine, zal::MsmAccel};
 use rand_core::{OsRng, RngCore};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -26,17 +26,20 @@ use crate::{
 ///
 /// `BatchVerifier` handles the accumulation of the MSMs for the batched proofs.
 #[derive(Debug)]
-struct BatchStrategy<'params, C: CurveAffine> {
-    msm: MSMIPA<'params, C>,
+struct BatchStrategy<'params, 'zal, C: CurveAffine, Zal>
+    where Zal: MsmAccel<C>
+{
+    msm: MSMIPA<'params, 'zal, C, Zal>,
 }
 
-impl<'params, C: CurveAffine>
-    VerificationStrategy<'params, IPACommitmentScheme<C>, VerifierIPA<'params, C>>
-    for BatchStrategy<'params, C>
+impl<'params, 'zal, C: CurveAffine, Zal>
+    VerificationStrategy<'params, IPACommitmentScheme<'zal, C, Zal>, VerifierIPA<'params, 'zal, C, Zal>>
+    for BatchStrategy<'params, 'zal, C, Zal>
+    where Zal: MsmAccel<C>
 {
-    type Output = MSMIPA<'params, C>;
+    type Output = MSMIPA<'params, 'zal, C, Zal>;
 
-    fn new(params: &'params ParamsVerifierIPA<C>) -> Self {
+    fn new(params: &'params ParamsVerifierIPA<'zal, C, Zal>) -> Self {
         BatchStrategy {
             msm: MSMIPA::new(params),
         }
@@ -44,7 +47,7 @@ impl<'params, C: CurveAffine>
 
     fn process(
         self,
-        f: impl FnOnce(MSMIPA<'params, C>) -> Result<GuardIPA<'params, C>, Error>,
+        f: impl FnOnce(MSMIPA<'params, 'zal, C, Zal>) -> Result<GuardIPA<'params, 'zal, C, Zal>, Error>,
     ) -> Result<Self::Output, Error> {
         let guard = f(self.msm)?;
         Ok(guard.use_challenges())
@@ -90,11 +93,15 @@ where
     /// This uses [`OsRng`] internally instead of taking an `R: RngCore` argument, because
     /// the internal parallelization requires access to a RNG that is guaranteed to not
     /// clone its internal state when shared between threads.
-    pub fn finalize(self, params: &ParamsVerifierIPA<C>, vk: &VerifyingKey<C>) -> bool {
-        fn accumulate_msm<'params, C: CurveAffine>(
-            mut acc: MSMIPA<'params, C>,
-            msm: MSMIPA<'params, C>,
-        ) -> MSMIPA<'params, C> {
+    pub fn finalize<'zal, Zal>(self, params: &ParamsVerifierIPA<'zal, C, Zal>, vk: &VerifyingKey<C>) -> bool
+        where Zal: MsmAccel<C>
+    {
+        fn accumulate_msm<'params, 'zal, C: CurveAffine, Zal>(
+            mut acc: MSMIPA<'params, 'zal, C, Zal>,
+            msm: MSMIPA<'params, 'zal, C, Zal>,
+        ) -> MSMIPA<'params, 'zal, C, Zal>
+            where Zal: MsmAccel<C>
+        {
             // Scale the MSM by a random factor to ensure that if the existing MSM has
             // `is_zero() == false` then this argument won't be able to interfere with it
             // to make it true, with high probability.

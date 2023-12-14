@@ -90,20 +90,20 @@ impl<'a, C: CurveAffine> RotationSet<C::Scalar, PolynomialPointer<'a, C>> {
 
 /// Concrete KZG prover with SHPLONK variant
 #[derive(Debug)]
-pub struct ProverSHPLONK<'a, E: Engine> {
-    params: &'a ParamsKZG<E>,
+pub struct ProverSHPLONK<'a, 'zal, E: Engine, Zal> {
+    params: &'a ParamsKZG<'zal, E, Zal>,
 }
 
-impl<'a, E: Engine> ProverSHPLONK<'a, E> {
+impl<'a, 'zal, E: Engine, Zal> ProverSHPLONK<'a, 'zal, E, Zal> {
     /// Given parameters creates new prover instance
-    pub fn new(params: &'a ParamsKZG<E>) -> Self {
+    pub fn new(params: &'a ParamsKZG<'zal, E, Zal>) -> Self {
         Self { params }
     }
 }
 
 /// Create a multi-opening proof
-impl<'params, E: Engine + Debug> Prover<'params, KZGCommitmentScheme<E>>
-    for ProverSHPLONK<'params, E>
+impl<'params, 'zal, E: Engine + Debug, Zal> Prover<'params, KZGCommitmentScheme<'zal, E, Zal>>
+    for ProverSHPLONK<'params, 'zal, E, Zal>
 where
     E::Scalar: Ord + PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -111,7 +111,7 @@ where
 {
     const QUERY_INSTANCE: bool = false;
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         Self { params }
     }
 

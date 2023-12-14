@@ -30,7 +30,7 @@ pub struct PartiallyEvaluated<C: CurveAffine> {
     random_eval: C::Scalar,
 }
 
-pub struct Evaluated<C: CurveAffine, M: MSM<C>> {
+pub struct Evaluated<'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> {
     h_commitment: M,
     random_poly_commitment: C,
     expected_h_eval: C::Scalar,
@@ -87,13 +87,13 @@ impl<C: CurveAffine> Constructed<C> {
 }
 
 impl<C: CurveAffine> PartiallyEvaluated<C> {
-    pub(in crate::plonk) fn verify<'params, P: Params<'params, C>>(
+    pub(in crate::plonk) fn verify<'params, 'zal, Zal, P: Params<'params, 'zal, C, Zal>>(
         self,
         params: &'params P,
         expressions: impl Iterator<Item = C::Scalar>,
         y: ChallengeY<C>,
         xn: C::Scalar,
-    ) -> Evaluated<C, P::MSM> {
+    ) -> Evaluated<'zal, C, Zal, P::MSM> {
         let expected_h_eval = expressions.fold(C::Scalar::ZERO, |h_eval, v| h_eval * &*y + &v);
         let expected_h_eval = expected_h_eval * ((xn - C::Scalar::ONE).invert().unwrap());
 
@@ -118,11 +118,11 @@ impl<C: CurveAffine> PartiallyEvaluated<C> {
     }
 }
 
-impl<C: CurveAffine, M: MSM<C>> Evaluated<C, M> {
+impl<'zal, C: CurveAffine, Zal, M: MSM<'zal, C, Zal>> Evaluated<'zal, C, Zal, M> {
     pub(in crate::plonk) fn queries(
         &self,
         x: ChallengeX<C>,
-    ) -> impl Iterator<Item = VerifierQuery<C, M>> + Clone {
+    ) -> impl Iterator<Item = VerifierQuery<C, Zal, M>> + Clone {
         iter::empty()
             .chain(Some(VerifierQuery::new_msm(
                 &self.h_commitment,

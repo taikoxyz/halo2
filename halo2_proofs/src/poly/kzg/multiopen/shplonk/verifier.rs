@@ -29,23 +29,23 @@ use std::ops::MulAssign;
 
 /// Concrete KZG multiopen verifier with SHPLONK variant
 #[derive(Debug)]
-pub struct VerifierSHPLONK<'params, E: Engine> {
-    params: &'params ParamsKZG<E>,
+pub struct VerifierSHPLONK<'params, 'zal, E: Engine, Zal> {
+    params: &'params ParamsKZG<'zal, E, Zal>,
 }
 
-impl<'params, E> Verifier<'params, KZGCommitmentScheme<E>> for VerifierSHPLONK<'params, E>
+impl<'params, 'zal, E, Zal> Verifier<'params, KZGCommitmentScheme<'zal, E, Zal>> for VerifierSHPLONK<'params, 'zal, E, Zal>
 where
     E: MultiMillerLoop + Debug,
     E::Scalar: PrimeField + Ord,
     E::G1Affine: SerdeCurveAffine,
     E::G2Affine: SerdeCurveAffine,
 {
-    type Guard = GuardKZG<'params, E>;
-    type MSMAccumulator = DualMSM<'params, E>;
+    type Guard = GuardKZG<'params, 'zal, E, Zal>;
+    type MSMAccumulator = DualMSM<'params, 'zal, E, Zal>;
 
     const QUERY_INSTANCE: bool = false;
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         Self { params }
     }
 
@@ -59,10 +59,10 @@ where
         &self,
         transcript: &mut T,
         queries: I,
-        mut msm_accumulator: DualMSM<'params, E>,
+        mut msm_accumulator: DualMSM<'params, 'zal, E, Zal>,
     ) -> Result<Self::Guard, Error>
     where
-        I: IntoIterator<Item = VerifierQuery<'com, E::G1Affine, MSMKZG<E>>> + Clone,
+        I: IntoIterator<Item = VerifierQuery<'com, 'zal, E::G1Affine, Zal, MSMKZG<'zal, E, Zal>>> + Clone,
     {
         let intermediate_sets = construct_intermediate_sets(queries);
         let (rotation_sets, super_point_set) = (

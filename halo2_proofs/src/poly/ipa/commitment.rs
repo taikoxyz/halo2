@@ -11,7 +11,7 @@ use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
 
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
-use halo2curves::zal::{H2cEngine, MsmAccel};
+use halo2curves::zal::MsmAccel;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -25,7 +25,10 @@ use std::io;
 
 /// Public parameters for IPA commitment scheme
 #[derive(Debug, Clone)]
-pub struct ParamsIPA<C: CurveAffine> {
+pub struct ParamsIPA<'zal, C: CurveAffine, Zal>
+    where Zal: MsmAccel<C>
+{
+    pub(crate) engine: &'zal Zal,
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<C>,
@@ -36,33 +39,44 @@ pub struct ParamsIPA<C: CurveAffine> {
 
 /// Concrete IPA commitment scheme
 #[derive(Debug)]
-pub struct IPACommitmentScheme<C: CurveAffine> {
+pub struct IPACommitmentScheme<'zal, C: CurveAffine, Zal>
+    where
+{
+    engine: &'zal Zal,
     _marker: PhantomData<C>,
 }
 
-impl<C: CurveAffine> CommitmentScheme for IPACommitmentScheme<C> {
+impl<'zal, C: CurveAffine, Zal> CommitmentScheme for IPACommitmentScheme<'zal, C, Zal>
+    where Zal: MsmAccel<C>
+{
     type Scalar = C::ScalarExt;
     type Curve = C;
 
-    type ParamsProver = ParamsIPA<C>;
-    type ParamsVerifier = ParamsVerifierIPA<C>;
+    type Zal = Self::Zal;
 
-    fn new_params(k: u32) -> Self::ParamsProver {
-        ParamsIPA::new(k)
+    type ParamsProver = ParamsIPA<'zal, C, Zal>;
+    type ParamsVerifier = ParamsVerifierIPA<'zal, C, Zal>;
+
+    fn new_params(k: u32, engine: &'zal Zal) -> Self::ParamsProver {
+        ParamsIPA::new(k, engine)
     }
 
-    fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver> {
-        ParamsIPA::read(reader)
+    fn read_params<R: io::Read>(reader: &mut R, engine: &'zal Zal) -> io::Result<Self::ParamsProver> {
+        ParamsIPA::read(reader, engine)
     }
 }
 
 /// Verifier parameters
-pub type ParamsVerifierIPA<C> = ParamsIPA<C>;
+pub type ParamsVerifierIPA<'zal, C, Zal> = ParamsIPA<'zal, C, Zal>;
 
-impl<'params, C: CurveAffine> ParamsVerifier<'params, C> for ParamsIPA<C> {}
+impl<'params, 'zal, C: CurveAffine, Zal> ParamsVerifier<'params, 'zal, C, Zal> for ParamsIPA<'zal, C, Zal>
+    where Zal: MsmAccel<C>
+{}
 
-impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
-    type MSM = MSMIPA<'params, C>;
+impl<'params, 'zal, C: CurveAffine, Zal> Params<'params, 'zal, C, Zal> for ParamsIPA<'zal, C, Zal>
+    where Zal: MsmAccel<C>
+{
+    type MSM = MSMIPA<'params, 'zal, C, Zal>;
 
     fn k(&self) -> u32 {
         self.k
@@ -81,7 +95,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
         self.g_lagrange = g_to_lagrange(self.g.iter().map(|g| g.to_curve()).collect(), k);
     }
 
-    fn empty_msm(&'params self) -> MSMIPA<C> {
+    fn empty_msm(&'params self) -> MSMIPA<'params, 'zal, C, Zal> {
         MSMIPA::new(self)
     }
 
@@ -102,8 +116,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
         tmp_bases.extend(self.g_lagrange.iter());
         tmp_bases.push(self.w);
 
-        let engine = H2cEngine::new();
-        engine.msm(&tmp_scalars, &tmp_bases)
+        self.engine.msm(&tmp_scalars, &tmp_bases)
     }
 
     /// Writes params to a buffer.
@@ -122,7 +135,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
     }
 
     /// Reads params from a buffer.
-    fn read<R: io::Read>(reader: &mut R) -> io::Result<Self> {
+    fn read<R: io::Read>(reader: &mut R, engine: &'zal Zal) -> io::Result<Self> {
         let mut k = [0u8; 4];
         reader.read_exact(&mut k[..])?;
         let k = u32::from_le_bytes(k);
@@ -136,6 +149,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
         let u = C::read(reader)?;
 
         Ok(Self {
+            engine,
             k,
             n,
             g,
@@ -146,8 +160,10 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
     }
 }
 
-impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
-    type ParamsVerifier = ParamsVerifierIPA<C>;
+impl<'params, 'zal, C: CurveAffine, Zal> ParamsProver<'params, 'zal, C, Zal> for ParamsIPA<'zal, C, Zal>
+    where Zal: MsmAccel<C>
+{
+    type ParamsVerifier = ParamsVerifierIPA<'zal, C, Zal>;
 
     fn verifier_params(&'params self) -> &'params Self::ParamsVerifier {
         self
@@ -155,7 +171,7 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
 
     /// Initializes parameters for the curve, given a random oracle to draw
     /// points from.
-    fn new(k: u32) -> Self {
+    fn new(k: u32, engine: &'zal Zal) -> Self {
         // This is usually a limitation on the curve, but we also want 32-bit
         // architectures to be supported.
         assert!(k < 32);
@@ -201,6 +217,7 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
         let u = hasher(&[2]).to_affine();
 
         ParamsIPA {
+            engine,
             k,
             n,
             g,
@@ -223,8 +240,7 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
         tmp_bases.extend(self.g.iter());
         tmp_bases.push(self.w);
 
-        let engine = H2cEngine::new();
-        engine.msm(&tmp_scalars, &tmp_bases)
+        self.engine.msm(&tmp_scalars, &tmp_bases)
     }
 
     fn get_g(&self) -> &[C] {
@@ -245,6 +261,7 @@ mod test {
 
     use ff::{Field, PrimeField};
     use group::{prime::PrimeCurveAffine, Curve, Group};
+    use halo2curves::zal::H2cEngine;
     use std::marker::PhantomData;
     use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -259,7 +276,8 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::pasta::{EpAffine, Fq};
 
-        let params = ParamsIPA::<EpAffine>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsIPA::<EpAffine>::new(K, &engine);
         let domain = EvaluationDomain::new(1, K);
 
         let mut a = domain.empty_lagrange();
@@ -284,7 +302,8 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::pasta::{EqAffine, Fp};
 
-        let params: ParamsIPA<EqAffine> = ParamsIPA::<EqAffine>::new(K);
+        let engine = H2cEngine::new();
+        let params: ParamsIPA<EqAffine> = ParamsIPA::<EqAffine>::new(K, &engine);
         let domain = EvaluationDomain::new(1, K);
 
         let mut a = domain.empty_lagrange();
@@ -320,10 +339,11 @@ mod test {
 
         let rng = OsRng;
 
-        let params = ParamsIPA::<EpAffine>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsIPA::<EpAffine>::new(K, &engine);
         let mut params_buffer = vec![];
         <ParamsIPA<_> as Params<_>>::write(&params, &mut params_buffer).unwrap();
-        let params: ParamsIPA<EpAffine> = Params::read::<_>(&mut &params_buffer[..]).unwrap();
+        let params: ParamsIPA<EpAffine> = Params::read::<_>(&mut &params_buffer[..], &engine).unwrap();
 
         let domain = EvaluationDomain::new(1, K);
 

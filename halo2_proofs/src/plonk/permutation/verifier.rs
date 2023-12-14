@@ -200,11 +200,11 @@ impl<C: CurveAffine> Evaluated<C> {
             )
     }
 
-    pub(in crate::plonk) fn queries<'r, M: MSM<C> + 'r>(
+    pub(in crate::plonk) fn queries<'r, 'zal, Zal, M: MSM<'zal, C, Zal> + 'r>(
         &'r self,
         vk: &'r plonk::VerifyingKey<C>,
         x: ChallengeX<C>,
-    ) -> impl Iterator<Item = VerifierQuery<'r, C, M>> + Clone {
+    ) -> impl Iterator<Item = VerifierQuery<'r, 'zal, C, Zal, M>> + Clone {
         let blinding_factors = vk.cs.blinding_factors();
         let x_next = vk.domain.rotate_omega(*x, Rotation::next());
         let x_last = vk
@@ -239,11 +239,11 @@ impl<C: CurveAffine> Evaluated<C> {
 }
 
 impl<C: CurveAffine> CommonEvaluated<C> {
-    pub(in crate::plonk) fn queries<'r, M: MSM<C> + 'r>(
+    pub(in crate::plonk) fn queries<'r, 'zal, Zal, M: MSM<'zal, C, Zal> + 'r>(
         &'r self,
         vkey: &'r VerifyingKey<C>,
         x: ChallengeX<C>,
-    ) -> impl Iterator<Item = VerifierQuery<'r, C, M>> + Clone {
+    ) -> impl Iterator<Item = VerifierQuery<'r, 'zal, C, Zal, M>> + Clone {
         // Open permutation commitments for each permutation argument at x
         vkey.commitments
             .iter()

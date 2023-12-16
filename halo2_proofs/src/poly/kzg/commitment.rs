@@ -7,7 +7,7 @@ use crate::SerdeFormat;
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
 use halo2curves::pairing::Engine;
-use halo2curves::zal::{H2cEngine, MsmAccel};
+use halo2curves::zal::MsmAccel;
 use rand_core::{OsRng, RngCore};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -19,7 +19,8 @@ use super::msm::MSMKZG;
 
 /// These are the public parameters for the polynomial commitment scheme.
 #[derive(Debug, Clone)]
-pub struct ParamsKZG<E: Engine> {
+pub struct ParamsKZG<'zal, E: Engine> {
+    pub(crate) engine: &'zal dyn MsmAccel<E::G1Affine>,
     pub(crate) k: u32,
     pub(crate) n: u64,
     pub(crate) g: Vec<E::G1Affine>,
@@ -30,11 +31,11 @@ pub struct ParamsKZG<E: Engine> {
 
 /// Umbrella commitment scheme construction for all KZG variants
 #[derive(Debug)]
-pub struct KZGCommitmentScheme<E: Engine> {
-    _marker: PhantomData<E>,
+pub struct KZGCommitmentScheme<'zal, E: Engine> {
+    _marker: PhantomData<&'zal E>,
 }
 
-impl<E: Engine + Debug> CommitmentScheme for KZGCommitmentScheme<E>
+impl<'zal, E: Engine + Debug> CommitmentScheme for KZGCommitmentScheme<'zal, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -43,25 +44,25 @@ where
     type Scalar = E::Scalar;
     type Curve = E::G1Affine;
 
-    type ParamsProver = ParamsKZG<E>;
-    type ParamsVerifier = ParamsVerifierKZG<E>;
+    type ParamsProver = ParamsKZG<'zal, E>;
+    type ParamsVerifier = ParamsVerifierKZG<'zal, E>;
 
-    fn new_params(k: u32) -> Self::ParamsProver {
-        ParamsKZG::new(k)
+    fn new_params(k: u32, engine: &'zal dyn MsmAccel<Self::Curve>) -> Self::ParamsProver {
+        ParamsKZG::new(k, engine)
     }
 
-    fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver> {
-        ParamsKZG::read(reader)
+    fn read_params<R: io::Read>(reader: &mut R, engine: &'zal dyn MsmAccel<Self::Curve>) -> io::Result<Self::ParamsProver> {
+        ParamsKZG::read(reader, engine)
     }
 }
 
-impl<E: Engine + Debug> ParamsKZG<E>
+impl<'zal, E: Engine + Debug> ParamsKZG<'zal, E>
 where
     E::Scalar: PrimeField,
 {
     /// Initializes parameters for the curve, draws toxic secret from given rng.
     /// MUST NOT be used in production.
-    pub fn setup<R: RngCore>(k: u32, rng: R) -> Self {
+    pub fn setup<R: RngCore>(k: u32, rng: R, engine: &'zal dyn MsmAccel<E::G1Affine>) -> Self {
         // Largest root of unity exponent of the Engine is `2^E::Scalar::S`, so we can
         // only support FFTs of polynomials below degree `2^E::Scalar::S`.
         assert!(k <= E::Scalar::S);
@@ -122,6 +123,7 @@ where
         let s_g2 = (g2 * s).into();
 
         Self {
+            engine,
             k,
             n,
             g,
@@ -135,6 +137,7 @@ where
     /// k, g, g_lagrange (optional), g2, s_g2
     pub fn from_parts(
         &self,
+        engine: &'zal dyn MsmAccel<E::G1Affine>,
         k: u32,
         g: Vec<E::G1Affine>,
         g_lagrange: Option<Vec<E::G1Affine>>,
@@ -142,6 +145,7 @@ where
         s_g2: E::G2Affine,
     ) -> Self {
         Self {
+            engine,
             k,
             n: 1 << k,
             g_lagrange: if let Some(g_l) = g_lagrange {
@@ -184,7 +188,7 @@ where
     }
 
     /// Reads params from a buffer.
-    pub fn read_custom<R: io::Read>(reader: &mut R, format: SerdeFormat) -> io::Result<Self>
+    pub fn read_custom<R: io::Read>(reader: &mut R, format: SerdeFormat, engine: &'zal dyn MsmAccel<E::G1Affine>) -> io::Result<Self>
     where
         E::G1Affine: SerdeCurveAffine,
         E::G2Affine: SerdeCurveAffine,
@@ -261,6 +265,7 @@ where
         let s_g2 = E::G2Affine::read(reader, format)?;
 
         Ok(Self {
+            engine,
             k,
             n: n as u64,
             g,
@@ -274,15 +279,15 @@ where
 // TODO: see the issue at https://github.com/appliedzkp/halo2/issues/45
 // So we probably need much smaller verifier key. However for new bases in g1 should be in verifier keys.
 /// KZG multi-open verification parameters
-pub type ParamsVerifierKZG<C> = ParamsKZG<C>;
+pub type ParamsVerifierKZG<'zal, C> = ParamsKZG<'zal, C>;
 
-impl<'params, E: Engine + Debug> Params<'params, E::G1Affine> for ParamsKZG<E>
+impl<'params, E: Engine + Debug> Params<'params, E::G1Affine> for ParamsKZG<'params, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
     E::G2Affine: SerdeCurveAffine,
 {
-    type MSM = MSMKZG<E>;
+    type MSM = MSMKZG<'params, E>;
 
     fn k(&self) -> u32 {
         self.k
@@ -303,7 +308,7 @@ where
     }
 
     fn empty_msm(&'params self) -> MSMKZG<E> {
-        MSMKZG::new()
+        MSMKZG::new(self.engine)
     }
 
     fn commit_lagrange(
@@ -316,8 +321,7 @@ where
         let bases = &self.g_lagrange;
         let size = scalars.len();
         assert!(bases.len() >= size);
-        let engine = H2cEngine::new();
-        engine.msm(&scalars, &bases[0..size])
+        self.engine.msm(&scalars, &bases[0..size])
     }
 
     /// Writes params to a buffer.
@@ -326,12 +330,12 @@ where
     }
 
     /// Reads params from a buffer.
-    fn read<R: io::Read>(reader: &mut R) -> io::Result<Self> {
-        Self::read_custom(reader, SerdeFormat::RawBytes)
+    fn read<R: io::Read>(reader: &mut R, engine: &'params dyn MsmAccel<E::G1Affine>) -> io::Result<Self> {
+        Self::read_custom(reader, SerdeFormat::RawBytes, engine)
     }
 }
 
-impl<'params, E: Engine + Debug> ParamsVerifier<'params, E::G1Affine> for ParamsKZG<E>
+impl<'params, E: Engine + Debug> ParamsVerifier<'params, E::G1Affine> for ParamsKZG<'params, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -339,20 +343,20 @@ where
 {
 }
 
-impl<'params, E: Engine + Debug> ParamsProver<'params, E::G1Affine> for ParamsKZG<E>
+impl<'params, E: Engine + Debug> ParamsProver<'params, E::G1Affine> for ParamsKZG<'params, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
     E::G2Affine: SerdeCurveAffine,
 {
-    type ParamsVerifier = ParamsVerifierKZG<E>;
+    type ParamsVerifier = ParamsVerifierKZG<'params, E>;
 
     fn verifier_params(&'params self) -> &'params Self::ParamsVerifier {
         self
     }
 
-    fn new(k: u32) -> Self {
-        Self::setup(k, OsRng)
+    fn new(k: u32, engine: &'params dyn MsmAccel<E::G1Affine>) -> Self {
+        Self::setup(k, OsRng, engine)
     }
 
     fn commit(&self, poly: &Polynomial<E::Scalar, Coeff>, _: Blind<E::Scalar>) -> E::G1 {
@@ -361,8 +365,7 @@ where
         let bases = &self.g;
         let size = scalars.len();
         assert!(bases.len() >= size);
-        let engine = H2cEngine::new();
-        engine.msm(&scalars, &bases[0..size])
+        self.engine.msm(&scalars, &bases[0..size])
     }
 
     fn get_g(&self) -> &[E::G1Affine] {
@@ -396,8 +399,10 @@ mod test {
 
         use crate::poly::EvaluationDomain;
         use halo2curves::bn256::{Bn256, Fr};
+        use halo2curves::zal::H2cEngine;
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsKZG::<Bn256>::new(K, &engine);
         let domain = EvaluationDomain::new(1, K);
 
         let mut a = domain.empty_lagrange();
@@ -423,12 +428,14 @@ mod test {
         use super::super::commitment::{Blind, Params};
         use crate::arithmetic::eval_polynomial;
         use crate::halo2curves::bn256::{Bn256, Fr};
+        use crate::halo2curves::zal::H2cEngine;
         use crate::poly::EvaluationDomain;
 
-        let params0 = ParamsKZG::<Bn256>::new(K);
+        let engine = H2cEngine::new();
+        let params0 = ParamsKZG::<Bn256>::new(K, &engine);
         let mut data = vec![];
         <ParamsKZG<_> as Params<_>>::write(&params0, &mut data).unwrap();
-        let params1: ParamsKZG<Bn256> = Params::read::<_>(&mut &data[..]).unwrap();
+        let params1: ParamsKZG<Bn256> = Params::read::<_>(&mut &data[..], &engine).unwrap();
 
         assert_eq!(params0.k, params1.k);
         assert_eq!(params0.n, params1.n);

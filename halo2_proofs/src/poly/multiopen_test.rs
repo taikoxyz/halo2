@@ -20,6 +20,7 @@ mod test {
     use ff::{Field, PrimeField, WithSmallOrderMulGroup};
     use group::{Curve, Group};
     use halo2curves::CurveAffine;
+    use halo2curves::zal::H2cEngine;
     use rand_core::{OsRng, RngCore};
     use std::io::{Read, Write};
 
@@ -32,7 +33,8 @@ mod test {
 
         const K: u32 = 4;
 
-        let params = ParamsIPA::<EqAffine>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsIPA::<EqAffine>::new(K, &engine);
 
         let proof = create_proof::<
             IPACommitmentScheme<EqAffine>,
@@ -66,10 +68,12 @@ mod test {
         use crate::poly::ipa::multiopen::{ProverIPA, VerifierIPA};
         use crate::poly::ipa::strategy::AccumulatorStrategy;
         use halo2curves::pasta::{Ep, EqAffine, Fp};
+        use halo2curves::zal::H2cEngine;
 
         const K: u32 = 4;
 
-        let params = ParamsIPA::<EqAffine>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsIPA::<EqAffine>::new(K, &engine);
 
         let proof = create_proof::<
             IPACommitmentScheme<EqAffine>,
@@ -107,7 +111,8 @@ mod test {
 
         const K: u32 = 4;
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsKZG::<Bn256>::new(K, &engine);
 
         let proof =
             create_proof::<_, ProverGWC<_>, _, Blake2bWrite<_, _, Challenge255<_>>>(&params);
@@ -139,7 +144,8 @@ mod test {
 
         const K: u32 = 4;
 
-        let params = ParamsKZG::<Bn256>::new(K);
+        let engine = H2cEngine::new();
+        let params = ParamsKZG::<Bn256>::new(K, &engine);
 
         let proof = create_proof::<
             KZGCommitmentScheme<Bn256>,

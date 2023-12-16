@@ -4,6 +4,3 @@ members = [
     "halo2_gadgets",
     "halo2_proofs",
 ]
-
-[patch."https://github.com/privacy-scaling-explorations/halo2curves"]
-halo2curves = { path = "../halo2curves" }

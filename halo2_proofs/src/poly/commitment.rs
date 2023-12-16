@@ -8,6 +8,7 @@ use crate::transcript::{EncodedChallenge, TranscriptRead, TranscriptWrite};
 use ff::Field;
 use group::{Curve, Group};
 use halo2curves::{CurveAffine, CurveExt};
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 use std::{
     fmt::Debug,
@@ -34,10 +35,10 @@ pub trait CommitmentScheme {
     type ParamsVerifier: for<'params> ParamsVerifier<'params, Self::Curve>;
 
     /// Wrapper for parameter generator
-    fn new_params(k: u32) -> Self::ParamsProver;
+    fn new_params<'zal>(k: u32, engine: &'zal dyn MsmAccel<Self::Curve>) -> Self::ParamsProver;
 
     /// Wrapper for parameter reader
-    fn read_params<R: io::Read>(reader: &mut R) -> io::Result<Self::ParamsProver>;
+    fn read_params<'zal, R: io::Read>(reader: &mut R, engine: &'zal dyn MsmAccel<Self::Curve>) -> io::Result<Self::ParamsProver>;
 }
 
 /// Parameters for circuit sysnthesis and prover parameters.
@@ -71,7 +72,7 @@ pub trait Params<'params, C: CurveAffine>: Sized + Clone {
     fn write<W: io::Write>(&self, writer: &mut W) -> io::Result<()>;
 
     /// Reads params from a buffer.
-    fn read<R: io::Read>(reader: &mut R) -> io::Result<Self>;
+    fn read<R: io::Read>(reader: &mut R, engine: &'params dyn MsmAccel<C>) -> io::Result<Self>;
 }
 
 /// Parameters for circuit sysnthesis and prover parameters.
@@ -80,7 +81,7 @@ pub trait ParamsProver<'params, C: CurveAffine>: Params<'params, C> {
     type ParamsVerifier: ParamsVerifier<'params, C>;
 
     /// Returns new instance of parameters
-    fn new(k: u32) -> Self;
+    fn new(k: u32, engine: &'params dyn MsmAccel<C>) -> Self;
 
     /// This computes a commitment to a polynomial described by the provided
     /// slice of coefficients. The commitment may be blinded by the blinding
@@ -99,7 +100,7 @@ pub trait ParamsProver<'params, C: CurveAffine>: Params<'params, C> {
 pub trait ParamsVerifier<'params, C: CurveAffine>: Params<'params, C> {}
 
 /// Multi scalar multiplication engine
-pub trait MSM<C: CurveAffine>: Clone + Debug + Send + Sync {
+pub trait MSM<C: CurveAffine>: Clone + Debug {
     /// Add arbitrary term (the scalar and the point)
     fn append_term(&mut self, scalar: C::Scalar, point: C::CurveExt);
 

@@ -15,7 +15,7 @@ use crate::{
 };
 use ff::Field;
 use group::Curve;
-use halo2curves::zal::{H2cEngine, MsmAccel};
+use halo2curves::zal::MsmAccel;
 use halo2curves::CurveAffine;
 use rand_core::{OsRng, RngCore};
 
@@ -40,7 +40,7 @@ pub struct Accumulator<C: CurveAffine> {
 }
 
 /// Define accumulator type as `MSMIPA`
-impl<'params, C: CurveAffine> Guard<IPACommitmentScheme<C>> for GuardIPA<'params, C> {
+impl<'params, C: CurveAffine> Guard<IPACommitmentScheme<'params, C>> for GuardIPA<'params, C> {
     type MSMAccumulator = MSMIPA<'params, C>;
 }
 
@@ -72,8 +72,7 @@ impl<'params, C: CurveAffine> GuardIPA<'params, C> {
     pub fn compute_g(&self) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
 
-        let engine = H2cEngine::new();
-        engine.msm(&s, &self.msm.params.g).to_affine()
+        self.msm.params.engine.msm(&s, &self.msm.params.g).to_affine()
     }
 }
 
@@ -84,7 +83,7 @@ pub struct AccumulatorStrategy<'params, C: CurveAffine> {
 }
 
 impl<'params, C: CurveAffine>
-    VerificationStrategy<'params, IPACommitmentScheme<C>, VerifierIPA<'params, C>>
+    VerificationStrategy<'params, IPACommitmentScheme<'params, C>, VerifierIPA<'params, C>>
     for AccumulatorStrategy<'params, C>
 {
     type Output = Self;
@@ -124,12 +123,12 @@ pub struct SingleStrategy<'params, C: CurveAffine> {
 }
 
 impl<'params, C: CurveAffine>
-    VerificationStrategy<'params, IPACommitmentScheme<C>, VerifierIPA<'params, C>>
+    VerificationStrategy<'params, IPACommitmentScheme<'params, C>, VerifierIPA<'params, C>>
     for SingleStrategy<'params, C>
 {
     type Output = ();
 
-    fn new(params: &'params ParamsIPA<C>) -> Self {
+    fn new(params: &'params ParamsIPA<'params, C>) -> Self {
         SingleStrategy {
             msm: MSMIPA::new(params),
         }

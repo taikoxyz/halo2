@@ -6,13 +6,13 @@ use crate::poly::{
 };
 use ff::Field;
 use group::Group;
-use halo2curves::zal::{H2cEngine, MsmAccel};
+use halo2curves::zal::MsmAccel;
 use std::collections::BTreeMap;
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Debug, Clone)]
 pub struct MSMIPA<'params, C: CurveAffine> {
-    pub(crate) params: &'params ParamsVerifierIPA<C>,
+    pub(crate) params: &'params ParamsVerifierIPA<'params, C>,
     g_scalars: Option<Vec<C::Scalar>>,
     w_scalar: Option<C::Scalar>,
     u_scalar: Option<C::Scalar>,
@@ -171,8 +171,7 @@ impl<'a, C: CurveAffine> MSM<C> for MSMIPA<'a, C> {
 
         assert_eq!(scalars.len(), len);
 
-        let engine = H2cEngine::new();
-        engine.msm(&scalars, &bases)
+        self.params.engine.msm(&scalars, &bases)
     }
 
     fn bases(&self) -> Vec<C::CurveExt> {
@@ -234,6 +233,7 @@ mod tests {
     use halo2curves::{
         pasta::{Ep, EpAffine, Fp, Fq},
         CurveAffine,
+        zal::H2cEngine,
     };
 
     #[test]
@@ -241,7 +241,8 @@ mod tests {
         let base: Ep = EpAffine::from_xy(-Fp::one(), Fp::from(2)).unwrap().into();
         let base_viol = base + base;
 
-        let params = ParamsIPA::new(4);
+        let engine = H2cEngine::new();
+        let params = ParamsIPA::new(4, &engine);
         let mut a: MSMIPA<EpAffine> = MSMIPA::new(&params);
         a.append_term(Fq::one(), base);
         // a = [1] P

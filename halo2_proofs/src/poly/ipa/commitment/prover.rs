@@ -1,5 +1,5 @@
 use ff::Field;
-use halo2curves::zal::{H2cEngine, MsmAccel};
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 
 use super::{Params, ParamsIPA};
@@ -97,7 +97,7 @@ pub fn create_proof<
     // this vector into smaller and smaller vectors until it is of length 1.
     let mut g_prime = params.g.clone();
 
-    let engine = H2cEngine::new();
+    let engine = params.engine;
     // Perform the inner product argument, round by round.
     for j in 0..params.k {
         let half = 1 << (params.k - j - 1); // half the length of `p_prime`, `b`, `G'`

@@ -27,10 +27,10 @@ use rand_core::OsRng;
 #[derive(Debug)]
 /// Concrete KZG verifier with GWC variant
 pub struct VerifierGWC<'params, E: Engine> {
-    params: &'params ParamsKZG<E>,
+    params: &'params ParamsKZG<'params, E>,
 }
 
-impl<'params, E> Verifier<'params, KZGCommitmentScheme<E>> for VerifierGWC<'params, E>
+impl<'params, E> Verifier<'params, KZGCommitmentScheme<'params, E>> for VerifierGWC<'params, E>
 where
     E: MultiMillerLoop + Debug,
     E::Scalar: PrimeField,
@@ -58,7 +58,7 @@ where
         mut msm_accumulator: DualMSM<'params, E>,
     ) -> Result<Self::Guard, Error>
     where
-        I: IntoIterator<Item = VerifierQuery<'com, E::G1Affine, MSMKZG<E>>> + Clone,
+        I: IntoIterator<Item = VerifierQuery<'com, E::G1Affine, MSMKZG<'params, E>>> + Clone,
     {
         let v: ChallengeV<_> = transcript.squeeze_challenge_scalar();
 
@@ -69,12 +69,13 @@ where
             .collect::<Result<Vec<E::G1Affine>, Error>>()?;
 
         let u: ChallengeU<_> = transcript.squeeze_challenge_scalar();
+        let engine = msm_accumulator.left.engine;
 
-        let mut commitment_multi = MSMKZG::<E>::new();
+        let mut commitment_multi = MSMKZG::<E>::new(engine);
         let mut eval_multi = E::Scalar::ZERO;
 
-        let mut witness = MSMKZG::<E>::new();
-        let mut witness_with_aux = MSMKZG::<E>::new();
+        let mut witness = MSMKZG::<E>::new(engine);
+        let mut witness_with_aux = MSMKZG::<E>::new(engine);
 
         for ((commitment_at_a_point, wi), power_of_u) in
             commitment_data.iter().zip(w.into_iter()).zip(powers(*u))
@@ -91,7 +92,7 @@ where
 
                     let commitment = match query.get_commitment() {
                         CommitmentReference::Commitment(c) => {
-                            let mut msm = MSMKZG::<E>::new();
+                            let mut msm = MSMKZG::<E>::new(engine);
                             msm.append_term(power_of_v, (*c).into());
                             msm
                         }

@@ -91,18 +91,18 @@ impl<'a, C: CurveAffine> RotationSet<C::Scalar, PolynomialPointer<'a, C>> {
 /// Concrete KZG prover with SHPLONK variant
 #[derive(Debug)]
 pub struct ProverSHPLONK<'a, E: Engine> {
-    params: &'a ParamsKZG<E>,
+    params: &'a ParamsKZG<'a, E>,
 }
 
 impl<'a, E: Engine> ProverSHPLONK<'a, E> {
     /// Given parameters creates new prover instance
-    pub fn new(params: &'a ParamsKZG<E>) -> Self {
+    pub fn new(params: &'a ParamsKZG<'a, E>) -> Self {
         Self { params }
     }
 }
 
 /// Create a multi-opening proof
-impl<'params, E: Engine + Debug> Prover<'params, KZGCommitmentScheme<E>>
+impl<'params, E: Engine + Debug> Prover<'params, KZGCommitmentScheme<'params, E>>
     for ProverSHPLONK<'params, E>
 where
     E::Scalar: Ord + PrimeField,
@@ -192,7 +192,8 @@ where
         let v: ChallengeV<_> = transcript.squeeze_challenge_scalar();
 
         let quotient_polynomials = rotation_sets
-            .par_iter()
+            // .par_iter()
+            .iter()
             .map(quotient_contribution)
             .collect::<Vec<_>>();
 

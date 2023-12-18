@@ -21,10 +21,10 @@ use crate::transcript::{EncodedChallenge, TranscriptRead};
 /// IPA multi-open verifier
 #[derive(Debug)]
 pub struct VerifierIPA<'params, C: CurveAffine> {
-    params: &'params ParamsIPA<C>,
+    params: &'params ParamsIPA<'params, C>,
 }
 
-impl<'params, C: CurveAffine> Verifier<'params, IPACommitmentScheme<C>>
+impl<'params, C: CurveAffine> Verifier<'params, IPACommitmentScheme<'params, C>>
     for VerifierIPA<'params, C>
 {
     type Guard = GuardIPA<'params, C>;

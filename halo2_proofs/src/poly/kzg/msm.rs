@@ -2,23 +2,28 @@ use std::fmt::Debug;
 
 use super::commitment::{KZGCommitmentScheme, ParamsKZG};
 use crate::{
-    arithmetic::{best_multiexp, parallelize, CurveAffine},
+    arithmetic::{parallelize, CurveAffine},
     poly::commitment::MSM,
 };
 use group::{Curve, Group};
-use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
+use halo2curves::{
+    pairing::{Engine, MillerLoopResult, MultiMillerLoop},
+    zal::MsmAccel,
+};
 
 /// A multiscalar multiplication in the polynomial commitment scheme
-#[derive(Clone, Default, Debug)]
-pub struct MSMKZG<E: Engine> {
+#[derive(Clone, Debug)]
+pub struct MSMKZG<'zal, E: Engine> {
+    pub(crate) engine: &'zal dyn MsmAccel<E::G1Affine>,
     pub(crate) scalars: Vec<E::Scalar>,
     pub(crate) bases: Vec<E::G1>,
 }
 
-impl<E: Engine> MSMKZG<E> {
+impl<'zal, E: Engine> MSMKZG<'zal, E> {
     /// Create an empty MSM instance
-    pub fn new() -> Self {
+    pub fn new(engine: &'zal dyn MsmAccel<E::G1Affine>) -> Self {
         MSMKZG {
+            engine,
             scalars: vec![],
             bases: vec![],
         }
@@ -37,7 +42,7 @@ impl<E: Engine> MSMKZG<E> {
     }
 }
 
-impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E> {
+impl<'zal, E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<'zal, E> {
     fn append_term(&mut self, scalar: E::Scalar, point: E::G1) {
         self.scalars.push(scalar);
         self.bases.push(point);
@@ -66,7 +71,7 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E> {
         use group::prime::PrimeCurveAffine;
         let mut bases = vec![E::G1Affine::identity(); self.scalars.len()];
         E::G1::batch_normalize(&self.bases, &mut bases);
-        best_multiexp(&self.scalars, &bases)
+        self.engine.msm(&self.scalars, &bases)
     }
 
     fn bases(&self) -> Vec<E::G1> {
@@ -80,18 +85,18 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E> {
 
 /// A projective point collector
 #[derive(Debug, Clone)]
-pub(crate) struct PreMSM<E: Engine> {
-    projectives_msms: Vec<MSMKZG<E>>,
+pub(crate) struct PreMSM<'zal, E: Engine> {
+    projectives_msms: Vec<MSMKZG<'zal, E>>,
 }
 
-impl<E: Engine + Debug> PreMSM<E> {
+impl<'zal, E: Engine + Debug> PreMSM<'zal, E> {
     pub(crate) fn new() -> Self {
         PreMSM {
             projectives_msms: vec![],
         }
     }
 
-    pub(crate) fn normalize(self) -> MSMKZG<E> {
+    pub(crate) fn normalize(self) -> MSMKZG<'zal, E> {
         use group::prime::PrimeCurveAffine;
 
         let (scalars, bases) = self
@@ -100,7 +105,13 @@ impl<E: Engine + Debug> PreMSM<E> {
             .map(|msm| (msm.scalars, msm.bases))
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
+        // We assume that all MSMs use the same engine
+        // and that we're not empty
+        assert_ne!(self.projectives_msms.len(), 0);
+        let engine = self.projectives_msms[0].engine;
+
         MSMKZG {
+            engine,
             scalars: scalars.into_iter().flatten().collect(),
             bases: bases.into_iter().flatten().collect(),
         }
@@ -111,7 +122,7 @@ impl<E: Engine + Debug> PreMSM<E> {
     }
 }
 
-impl<'params, E: MultiMillerLoop + Debug> From<&'params ParamsKZG<E>> for DualMSM<'params, E> {
+impl<'params, E: MultiMillerLoop + Debug> From<&'params ParamsKZG<'params, E>> for DualMSM<'params, E> {
     fn from(params: &'params ParamsKZG<E>) -> Self {
         DualMSM::new(params)
     }
@@ -120,9 +131,9 @@ impl<'params, E: MultiMillerLoop + Debug> From<&'params ParamsKZG<E>> for DualMS
 /// Two channel MSM accumulator
 #[derive(Debug, Clone)]
 pub struct DualMSM<'a, E: Engine> {
-    pub(crate) params: &'a ParamsKZG<E>,
-    pub(crate) left: MSMKZG<E>,
-    pub(crate) right: MSMKZG<E>,
+    pub(crate) params: &'a ParamsKZG<'a, E>,
+    pub(crate) left: MSMKZG<'a, E>,
+    pub(crate) right: MSMKZG<'a, E>,
 }
 
 impl<'a, E: MultiMillerLoop + Debug> DualMSM<'a, E> {
@@ -130,8 +141,8 @@ impl<'a, E: MultiMillerLoop + Debug> DualMSM<'a, E> {
     pub fn new(params: &'a ParamsKZG<E>) -> Self {
         Self {
             params,
-            left: MSMKZG::new(),
-            right: MSMKZG::new(),
+            left: MSMKZG::new(params.engine),
+            right: MSMKZG::new(params.engine),
         }
     }
 

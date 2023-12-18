@@ -30,10 +30,10 @@ use std::ops::MulAssign;
 /// Concrete KZG multiopen verifier with SHPLONK variant
 #[derive(Debug)]
 pub struct VerifierSHPLONK<'params, E: Engine> {
-    params: &'params ParamsKZG<E>,
+    params: &'params ParamsKZG<'params, E>,
 }
 
-impl<'params, E> Verifier<'params, KZGCommitmentScheme<E>> for VerifierSHPLONK<'params, E>
+impl<'params, E> Verifier<'params, KZGCommitmentScheme<'params, E>> for VerifierSHPLONK<'params, E>
 where
     E: MultiMillerLoop + Debug,
     E::Scalar: PrimeField + Ord,
@@ -62,7 +62,7 @@ where
         mut msm_accumulator: DualMSM<'params, E>,
     ) -> Result<Self::Guard, Error>
     where
-        I: IntoIterator<Item = VerifierQuery<'com, E::G1Affine, MSMKZG<E>>> + Clone,
+        I: IntoIterator<Item = VerifierQuery<'com, E::G1Affine, MSMKZG<'params, E>>> + Clone,
     {
         let intermediate_sets = construct_intermediate_sets(queries);
         let (rotation_sets, super_point_set) = (
@@ -109,7 +109,7 @@ where
                     let r_eval = power_of_y * eval_polynomial(&r_x[..], *u);
                     let msm = match commitment_data.get() {
                         CommitmentReference::Commitment(c) => {
-                            let mut msm = MSMKZG::<E>::new();
+                            let mut msm = MSMKZG::<E>::new(msm_accumulator.left.engine);
                             msm.append_term(power_of_y, (*c).into());
                             msm
                         }

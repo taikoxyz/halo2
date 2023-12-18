@@ -30,7 +30,7 @@ pub struct GuardKZG<'params, E: MultiMillerLoop + Debug> {
 }
 
 /// Define accumulator type as `DualMSM`
-impl<'params, E> Guard<KZGCommitmentScheme<E>> for GuardKZG<'params, E>
+impl<'params, E> Guard<KZGCommitmentScheme<'params, E>> for GuardKZG<'params, E>
 where
     E::Scalar: PrimeField,
     E: MultiMillerLoop + Debug,
@@ -75,7 +75,7 @@ pub struct SingleStrategy<'params, E: Engine> {
 
 impl<'params, E: MultiMillerLoop + Debug> SingleStrategy<'params, E> {
     /// Constructs an empty batch verifier
-    pub fn new(params: &'params ParamsKZG<E>) -> Self {
+    pub fn new(params: &'params ParamsKZG<'params, E>) -> Self {
         SingleStrategy {
             msm: DualMSM::new(params),
         }
@@ -87,11 +87,11 @@ impl<
         E: MultiMillerLoop + Debug,
         V: Verifier<
             'params,
-            KZGCommitmentScheme<E>,
+            KZGCommitmentScheme<'params, E>,
             MSMAccumulator = DualMSM<'params, E>,
             Guard = GuardKZG<'params, E>,
         >,
-    > VerificationStrategy<'params, KZGCommitmentScheme<E>, V> for AccumulatorStrategy<'params, E>
+    > VerificationStrategy<'params, KZGCommitmentScheme<'params, E>, V> for AccumulatorStrategy<'params, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -99,7 +99,7 @@ where
 {
     type Output = Self;
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'params, E>) -> Self {
         AccumulatorStrategy::new(params)
     }
 
@@ -126,11 +126,11 @@ impl<
         E: MultiMillerLoop + Debug,
         V: Verifier<
             'params,
-            KZGCommitmentScheme<E>,
+            KZGCommitmentScheme<'params, E>,
             MSMAccumulator = DualMSM<'params, E>,
             Guard = GuardKZG<'params, E>,
         >,
-    > VerificationStrategy<'params, KZGCommitmentScheme<E>, V> for SingleStrategy<'params, E>
+    > VerificationStrategy<'params, KZGCommitmentScheme<'params, E>, V> for SingleStrategy<'params, E>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,

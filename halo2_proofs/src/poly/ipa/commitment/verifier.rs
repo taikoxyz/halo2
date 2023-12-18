@@ -4,13 +4,11 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use halo2curves::zal::MsmAccel;
 
 use super::ParamsIPA;
 use crate::poly::ipa::commitment::{IPACommitmentScheme, ParamsVerifierIPA};
-use crate::{
-    arithmetic::{best_multiexp, CurveAffine},
-    poly::ipa::strategy::GuardIPA,
-};
+use crate::{arithmetic::CurveAffine, poly::ipa::strategy::GuardIPA};
 use crate::{
     poly::{commitment::MSM, ipa::msm::MSMIPA, strategy::Guard, Error},
     transcript::{EncodedChallenge, TranscriptRead},
@@ -19,13 +17,16 @@ use crate::{
 /// Checks to see if the proof represented within `transcript` is valid, and a
 /// point `x` that the polynomial commitment `P` opens purportedly to the value
 /// `v`. The provided `msm` should evaluate to the commitment `P` being opened.
-pub fn verify_proof<'params, C: CurveAffine, E: EncodedChallenge<C>, T: TranscriptRead<C, E>>(
-    params: &'params ParamsIPA<C>,
-    mut msm: MSMIPA<'params, C>,
+pub fn verify_proof<'params, 'zal, C: CurveAffine, Zal, E: EncodedChallenge<C>, T: TranscriptRead<C, E>>
+(
+    params: &'params ParamsIPA<'zal, C, Zal>,
+    mut msm: MSMIPA<'params, 'zal, C, Zal>,
     transcript: &mut T,
     x: C::Scalar,
     v: C::Scalar,
-) -> Result<GuardIPA<'params, C>, Error> {
+) -> Result<GuardIPA<'params, 'zal, C, Zal>, Error>
+    where Zal: MsmAccel<C>
+{
     let k = params.k as usize;
 
     // P' = P - [v] G_0 + [ξ] S

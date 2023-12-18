@@ -25,57 +25,57 @@ use rand_core::OsRng;
 
 /// Wrapper for linear verification accumulator
 #[derive(Debug, Clone)]
-pub struct GuardKZG<'params, E: MultiMillerLoop + Debug> {
-    pub(crate) msm_accumulator: DualMSM<'params, E>,
+pub struct GuardKZG<'params, 'zal, E: MultiMillerLoop + Debug, Zal> {
+    pub(crate) msm_accumulator: DualMSM<'params, 'zal, E, Zal>,
 }
 
 /// Define accumulator type as `DualMSM`
-impl<'params, E> Guard<KZGCommitmentScheme<E>> for GuardKZG<'params, E>
+impl<'params, 'zal, E, Zal> Guard<KZGCommitmentScheme<'zal, E, Zal>> for GuardKZG<'params, 'zal, E, Zal>
 where
     E::Scalar: PrimeField,
     E: MultiMillerLoop + Debug,
     E::G1Affine: SerdeCurveAffine,
     E::G2Affine: SerdeCurveAffine,
 {
-    type MSMAccumulator = DualMSM<'params, E>;
+    type MSMAccumulator = DualMSM<'params, 'zal, E, Zal>;
 }
 
 /// KZG specific operations
-impl<'params, E: MultiMillerLoop + Debug> GuardKZG<'params, E> {
-    pub(crate) fn new(msm_accumulator: DualMSM<'params, E>) -> Self {
+impl<'params, 'zal, E: MultiMillerLoop + Debug, Zal> GuardKZG<'params, 'zal, E, Zal> {
+    pub(crate) fn new(msm_accumulator: DualMSM<'params, 'zal, E, Zal>) -> Self {
         Self { msm_accumulator }
     }
 }
 
 /// A verifier that checks multiple proofs in a batch
 #[derive(Clone, Debug)]
-pub struct AccumulatorStrategy<'params, E: Engine> {
-    pub(crate) msm_accumulator: DualMSM<'params, E>,
+pub struct AccumulatorStrategy<'params, 'zal, E: Engine, Zal> {
+    pub(crate) msm_accumulator: DualMSM<'params, 'zal, E, Zal>,
 }
 
-impl<'params, E: MultiMillerLoop + Debug> AccumulatorStrategy<'params, E> {
+impl<'params, 'zal, E: MultiMillerLoop + Debug, Zal> AccumulatorStrategy<'params, 'zal, E, Zal> {
     /// Constructs an empty batch verifier
-    pub fn new(params: &'params ParamsKZG<E>) -> Self {
+    pub fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         AccumulatorStrategy {
             msm_accumulator: DualMSM::new(params),
         }
     }
 
     /// Constructs and initialized new batch verifier
-    pub fn with(msm_accumulator: DualMSM<'params, E>) -> Self {
+    pub fn with(msm_accumulator: DualMSM<'params, 'zal, E, Zal>) -> Self {
         AccumulatorStrategy { msm_accumulator }
     }
 }
 
 /// A verifier that checks a single proof
 #[derive(Clone, Debug)]
-pub struct SingleStrategy<'params, E: Engine> {
-    pub(crate) msm: DualMSM<'params, E>,
+pub struct SingleStrategy<'params, 'zal, E: Engine, Zal> {
+    pub(crate) msm: DualMSM<'params, 'zal, E, Zal>,
 }
 
-impl<'params, E: MultiMillerLoop + Debug> SingleStrategy<'params, E> {
+impl<'params, 'zal, E: MultiMillerLoop + Debug, Zal> SingleStrategy<'params, 'zal, E, Zal> {
     /// Constructs an empty batch verifier
-    pub fn new(params: &'params ParamsKZG<E>) -> Self {
+    pub fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         SingleStrategy {
             msm: DualMSM::new(params),
         }
@@ -83,15 +83,16 @@ impl<'params, E: MultiMillerLoop + Debug> SingleStrategy<'params, E> {
 }
 
 impl<
-        'params,
+        'params, 'zal,
         E: MultiMillerLoop + Debug,
+        Zal,
         V: Verifier<
             'params,
-            KZGCommitmentScheme<E>,
-            MSMAccumulator = DualMSM<'params, E>,
-            Guard = GuardKZG<'params, E>,
+            KZGCommitmentScheme<'zal, E, Zal>,
+            MSMAccumulator = DualMSM<'params, 'zal, E, Zal>,
+            Guard = GuardKZG<'params, 'zal, E, Zal>,
         >,
-    > VerificationStrategy<'params, KZGCommitmentScheme<E>, V> for AccumulatorStrategy<'params, E>
+    > VerificationStrategy<'params, KZGCommitmentScheme<'zal, E, Zal>, V> for AccumulatorStrategy<'params, 'zal, E, Zal>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -99,7 +100,7 @@ where
 {
     type Output = Self;
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         AccumulatorStrategy::new(params)
     }
 
@@ -122,15 +123,16 @@ where
 }
 
 impl<
-        'params,
+        'params, 'zal,
         E: MultiMillerLoop + Debug,
+        Zal,
         V: Verifier<
             'params,
-            KZGCommitmentScheme<E>,
-            MSMAccumulator = DualMSM<'params, E>,
-            Guard = GuardKZG<'params, E>,
+            KZGCommitmentScheme<'zal, E, Zal>,
+            MSMAccumulator = DualMSM<'params, 'zal, E, Zal>,
+            Guard = GuardKZG<'params, 'zal, E, Zal>,
         >,
-    > VerificationStrategy<'params, KZGCommitmentScheme<E>, V> for SingleStrategy<'params, E>
+    > VerificationStrategy<'params, KZGCommitmentScheme<'zal, E, Zal>, V> for SingleStrategy<'params, 'zal, E, Zal>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -138,7 +140,7 @@ where
 {
     type Output = ();
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         Self::new(params)
     }
 

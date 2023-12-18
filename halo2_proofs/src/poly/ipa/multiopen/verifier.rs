@@ -20,19 +20,20 @@ use crate::transcript::{EncodedChallenge, TranscriptRead};
 
 /// IPA multi-open verifier
 #[derive(Debug)]
-pub struct VerifierIPA<'params, C: CurveAffine> {
-    params: &'params ParamsIPA<C>,
+pub struct VerifierIPA<'params, 'zal, C: CurveAffine, Zal>
+{
+    params: &'params ParamsIPA<'zal, C, Zal>,
 }
 
-impl<'params, C: CurveAffine> Verifier<'params, IPACommitmentScheme<C>>
-    for VerifierIPA<'params, C>
+impl<'params, 'zal, C: CurveAffine, Zal> Verifier<'params, IPACommitmentScheme<'zal, C, Zal>>
+    for VerifierIPA<'params, 'zal, C, Zal>
 {
-    type Guard = GuardIPA<'params, C>;
-    type MSMAccumulator = MSMIPA<'params, C>;
+    type Guard = GuardIPA<'params, 'zal, C, Zal>;
+    type MSMAccumulator = MSMIPA<'params, 'zal, C, Zal>;
 
     const QUERY_INSTANCE: bool = true;
 
-    fn new(params: &'params ParamsVerifierIPA<C>) -> Self {
+    fn new(params: &'params ParamsVerifierIPA<'zal, C, Zal>) -> Self {
         Self { params }
     }
 
@@ -40,11 +41,11 @@ impl<'params, C: CurveAffine> Verifier<'params, IPACommitmentScheme<C>>
         &self,
         transcript: &mut T,
         queries: I,
-        mut msm: MSMIPA<'params, C>,
+        mut msm: MSMIPA<'params, 'zal, C, Zal>,
     ) -> Result<Self::Guard, Error>
     where
         'params: 'com,
-        I: IntoIterator<Item = VerifierQuery<'com, C, MSMIPA<'params, C>>> + Clone,
+        I: IntoIterator<Item = VerifierQuery<'com, 'zal, C, Zal, MSMIPA<'params, 'zal, C, Zal>>> + Clone,
     {
         // Sample x_1 for compressing openings at the same point sets together
         let x_1: ChallengeX1<_> = transcript.squeeze_challenge_scalar();
@@ -67,7 +68,7 @@ impl<'params, C: CurveAffine> Verifier<'params, IPACommitmentScheme<C>>
         }
         {
             let mut accumulate = |set_idx: usize,
-                                  new_commitment: CommitmentReference<C, MSMIPA<'params, C>>,
+                                  new_commitment: CommitmentReference<C, MSMIPA<'zal, C, Zal>>,
                                   evals: Vec<C::Scalar>| {
                 q_commitments[set_idx].scale(*x_1);
                 match new_commitment {

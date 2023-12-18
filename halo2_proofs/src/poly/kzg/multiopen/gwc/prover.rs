@@ -22,12 +22,12 @@ use std::marker::PhantomData;
 
 /// Concrete KZG prover with GWC variant
 #[derive(Debug)]
-pub struct ProverGWC<'params, E: Engine> {
-    params: &'params ParamsKZG<E>,
+pub struct ProverGWC<'params, 'zal, E: Engine, Zal> {
+    params: &'params ParamsKZG<'zal, E, Zal>,
 }
 
 /// Create a multi-opening proof
-impl<'params, E: Engine + Debug> Prover<'params, KZGCommitmentScheme<E>> for ProverGWC<'params, E>
+impl<'params, 'zal, E: Engine + Debug, Zal> Prover<'params, KZGCommitmentScheme<'zal, E, Zal>> for ProverGWC<'params, 'zal, E, Zal>
 where
     E::Scalar: PrimeField,
     E::G1Affine: SerdeCurveAffine,
@@ -35,7 +35,7 @@ where
 {
     const QUERY_INSTANCE: bool = false;
 
-    fn new(params: &'params ParamsKZG<E>) -> Self {
+    fn new(params: &'params ParamsKZG<'zal, E, Zal>) -> Self {
         Self { params }
     }
 

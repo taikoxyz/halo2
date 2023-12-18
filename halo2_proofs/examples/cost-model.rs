@@ -8,8 +8,10 @@ use std::{
 use ff::Field;
 use group::{Curve, Group};
 use gumdrop::Options;
-use halo2_proofs::arithmetic::best_multiexp;
-use halo2curves::pasta::pallas;
+use halo2curves::{
+    pasta::pallas,
+    zal::{H2cEngine, MsmAccel},
+};
 
 struct Estimator {
     /// Scalars for estimating multiexp performance.
@@ -41,7 +43,8 @@ impl Estimator {
 
     fn multiexp(&self, size: usize) -> Duration {
         let start = Instant::now();
-        best_multiexp(&self.multiexp_scalars[..size], &self.multiexp_bases[..size]);
+        let engine = H2cEngine::new();
+        engine.msm(&self.multiexp_scalars[..size], &self.multiexp_bases[..size]);
         Instant::now().duration_since(start)
     }
 }

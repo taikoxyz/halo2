@@ -204,13 +204,13 @@ impl<F: Field> Assignment<F> for Assembly<F> {
 }
 
 /// Generate a `VerifyingKey` from an instance of `Circuit`.
-pub fn keygen_vk<'params, C, P, ConcreteCircuit>(
+pub fn keygen_vk<'params, 'zal, Zal, C, P, ConcreteCircuit>(
     params: &P,
     circuit: &ConcreteCircuit,
 ) -> Result<VerifyingKey<C>, Error>
 where
     C: CurveAffine,
-    P: Params<'params, C>,
+    P: Params<'params, 'zal, C, Zal>,
     ConcreteCircuit: Circuit<C::Scalar>,
     C::Scalar: FromUniformBytes<64>,
 {
@@ -268,14 +268,14 @@ where
 }
 
 /// Generate a `ProvingKey` from a `VerifyingKey` and an instance of `Circuit`.
-pub fn keygen_pk<'params, C, P, ConcreteCircuit>(
+pub fn keygen_pk<'params, 'zal, C, Zal, P, ConcreteCircuit>(
     params: &P,
     vk: VerifyingKey<C>,
     circuit: &ConcreteCircuit,
 ) -> Result<ProvingKey<C>, Error>
 where
     C: CurveAffine,
-    P: Params<'params, C>,
+    P: Params<'params, 'zal, C, Zal>,
     ConcreteCircuit: Circuit<C::Scalar>,
 {
     let mut cs = ConstraintSystem::default();

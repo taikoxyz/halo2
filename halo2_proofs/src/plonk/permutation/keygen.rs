@@ -102,7 +102,7 @@ impl Assembly {
         Ok(())
     }
 
-    pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
+    pub(crate) fn build_vk<'params, 'zal, C: CurveAffine, Zal, P: Params<'params, 'zal, C, Zal>>(
         self,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,
@@ -164,7 +164,7 @@ impl Assembly {
         VerifyingKey { commitments }
     }
 
-    pub(crate) fn build_pk<'params, C: CurveAffine, P: Params<'params, C>>(
+    pub(crate) fn build_pk<'params, 'zal, C: CurveAffine, Zal, P: Params<'params, 'zal, C, Zal>>(
         self,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,

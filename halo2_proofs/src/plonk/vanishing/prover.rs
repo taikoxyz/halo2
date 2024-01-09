@@ -2,6 +2,7 @@ use std::iter;
 
 use ff::{Field, PrimeField};
 use group::Curve;
+use halo2curves::zal::MsmAccel;
 use rand_chacha::ChaCha20Rng;
 use rand_core::{RngCore, SeedableRng};
 use rayon::{current_num_threads, prelude::*};
@@ -43,6 +44,7 @@ impl<C: CurveAffine> Argument<C> {
         R: RngCore,
         T: TranscriptWrite<C, E>,
     >(
+        engine: &dyn MsmAccel<C>,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,
         mut rng: R,
@@ -78,7 +80,9 @@ impl<C: CurveAffine> Argument<C> {
         let random_blind = Blind(C::Scalar::random(rng));
 
         // Commit
-        let c = params.commit(&random_poly, random_blind).to_affine();
+        let c = params
+            .commit(engine, &random_poly, random_blind)
+            .to_affine();
         transcript.write_point(c)?;
 
         Ok(Committed {
@@ -97,6 +101,7 @@ impl<C: CurveAffine> Committed<C> {
         T: TranscriptWrite<C, E>,
     >(
         self,
+        engine: &dyn MsmAccel<C>,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,
         h_poly: Polynomial<C::Scalar, ExtendedLagrangeCoeff>,
@@ -124,7 +129,7 @@ impl<C: CurveAffine> Committed<C> {
         let h_commitments_projective: Vec<_> = h_pieces
             .iter()
             .zip(h_blinds.iter())
-            .map(|(h_piece, blind)| params.commit(h_piece, *blind))
+            .map(|(h_piece, blind)| params.commit(engine, h_piece, *blind))
             .collect();
         let mut h_commitments = vec![C::identity(); h_commitments_projective.len()];
         C::Curve::batch_normalize(&h_commitments_projective, &mut h_commitments);

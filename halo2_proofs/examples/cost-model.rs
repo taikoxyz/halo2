@@ -43,6 +43,8 @@ impl Estimator {
 
     fn multiexp(&self, size: usize) -> Duration {
         let start = Instant::now();
+        // TODO: at the moment we use the default MSM for estimating cost.
+        //       is it beneficial to use the real engine?
         let engine = H2cEngine::new();
         engine.msm(&self.multiexp_scalars[..size], &self.multiexp_bases[..size]);
         Instant::now().duration_since(start)

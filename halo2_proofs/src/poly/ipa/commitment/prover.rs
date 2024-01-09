@@ -31,6 +31,7 @@ pub fn create_proof<
     R: RngCore,
     T: TranscriptWrite<C, E>,
 >(
+    engine: &dyn MsmAccel<C>,
     params: &ParamsIPA<C>,
     mut rng: R,
     transcript: &mut T,
@@ -55,7 +56,7 @@ pub fn create_proof<
     let s_poly_blind = Blind(C::Scalar::random(&mut rng));
 
     // Write a commitment to the random polynomial to the transcript
-    let s_poly_commitment = params.commit(&s_poly, s_poly_blind).to_affine();
+    let s_poly_commitment = params.commit(engine, &s_poly, s_poly_blind).to_affine();
     transcript.write_point(s_poly_commitment)?;
 
     // Challenge that will ensure that the prover cannot change P but can only
@@ -97,7 +98,6 @@ pub fn create_proof<
     // this vector into smaller and smaller vectors until it is of length 1.
     let mut g_prime = params.g.clone();
 
-    let engine = H2cEngine::new();
     // Perform the inner product argument, round by round.
     for j in 0..params.k {
         let half = 1 << (params.k - j - 1); // half the length of `p_prime`, `b`, `G'`

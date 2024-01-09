@@ -18,6 +18,7 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 use std::{any::TypeId, convert::TryInto, num::ParseIntError, ops::Index};
 use std::{
@@ -72,6 +73,7 @@ impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
         T: TranscriptWrite<C, E>,
     >(
         &self,
+        engine: &dyn MsmAccel<C>,
         pk: &ProvingKey<C>,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,
@@ -128,7 +130,7 @@ impl<F: WithSmallOrderMulGroup<3>> Argument<F> {
         let mut commit_values = |values: &Polynomial<C::Scalar, LagrangeCoeff>| {
             let poly = pk.vk.domain.lagrange_to_coeff(values.clone());
             let blind = Blind(C::Scalar::random(&mut rng));
-            let commitment = params.commit_lagrange(values, blind).to_affine();
+            let commitment = params.commit_lagrange(engine, values, blind).to_affine();
             (poly, blind, commitment)
         };
 
@@ -173,6 +175,7 @@ impl<C: CurveAffine> Permuted<C> {
         T: TranscriptWrite<C, E>,
     >(
         self,
+        engine: &dyn MsmAccel<C>,
         pk: &ProvingKey<C>,
         params: &P,
         beta: ChallengeBeta<C>,
@@ -289,7 +292,9 @@ impl<C: CurveAffine> Permuted<C> {
         }
 
         let product_blind = Blind(C::Scalar::random(rng));
-        let product_commitment = params.commit_lagrange(&z, product_blind).to_affine();
+        let product_commitment = params
+            .commit_lagrange(engine, &z, product_blind)
+            .to_affine();
         let z = pk.vk.domain.lagrange_to_coeff(z);
 
         // Hash product commitment

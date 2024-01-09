@@ -24,6 +24,7 @@ use halo2_proofs::{
     SerdeFormat,
 };
 use halo2curves::bn256::{Bn256, Fr, G1Affine};
+use halo2curves::zal::H2cEngine;
 use rand_core::OsRng;
 
 #[derive(Clone, Copy)]
@@ -129,6 +130,7 @@ impl Circuit<Fr> for StandardPlonk {
 }
 
 fn main() {
+    let engine = H2cEngine::new();
     let k = 4;
     let circuit = StandardPlonk(Fr::random(OsRng));
     let params = ParamsKZG::<Bn256>::setup(k, OsRng);
@@ -163,6 +165,7 @@ fn main() {
         Blake2bWrite<Vec<u8>, G1Affine, Challenge255<_>>,
         _,
     >(
+        &engine,
         &params,
         &pk,
         &[circuit],

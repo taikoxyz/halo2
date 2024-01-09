@@ -1,5 +1,6 @@
 use ff::{Field, PrimeField};
 use group::Curve;
+use halo2curves::zal::MsmAccel;
 
 use super::{Argument, ProvingKey, VerifyingKey};
 use crate::{
@@ -104,6 +105,7 @@ impl Assembly {
 
     pub(crate) fn build_vk<'params, C: CurveAffine, P: Params<'params, C>>(
         self,
+        engine: &dyn MsmAccel<C>,
         params: &P,
         domain: &EvaluationDomain<C::Scalar>,
         p: &Argument,
@@ -156,7 +158,7 @@ impl Assembly {
             // Compute commitment to permutation polynomial
             commitments.push(
                 params
-                    .commit_lagrange(permutation, Blind::default())
+                    .commit_lagrange(engine, permutation, Blind::default())
                     .to_affine(),
             );
         }

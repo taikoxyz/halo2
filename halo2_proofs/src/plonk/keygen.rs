@@ -4,6 +4,7 @@ use std::ops::Range;
 
 use ff::{Field, FromUniformBytes};
 use group::Curve;
+use halo2curves::zal::H2cEngine;
 
 use super::{
     circuit::{
@@ -214,6 +215,8 @@ where
     ConcreteCircuit: Circuit<C::Scalar>,
     C::Scalar: FromUniformBytes<64>,
 {
+    // ZAL: Verification is (supposedly) cheap, hence we don't use an accelerator engine
+    let default_engine = H2cEngine::new();
     let (domain, cs, config) = create_domain::<C, ConcreteCircuit>(
         params.k(),
         #[cfg(feature = "circuit-params")]
@@ -249,13 +252,18 @@ where
             .map(|poly| domain.lagrange_from_vec(poly)),
     );
 
-    let permutation_vk = assembly
-        .permutation
-        .build_vk(params, &domain, &cs.permutation);
+    let permutation_vk =
+        assembly
+            .permutation
+            .build_vk(&default_engine, params, &domain, &cs.permutation);
 
     let fixed_commitments = fixed
         .iter()
-        .map(|poly| params.commit_lagrange(poly, Blind::default()).to_affine())
+        .map(|poly| {
+            params
+                .commit_lagrange(&default_engine, poly, Blind::default())
+                .to_affine()
+        })
         .collect();
 
     Ok(VerifyingKey::from_parts(

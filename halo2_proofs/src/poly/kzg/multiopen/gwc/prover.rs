@@ -14,7 +14,7 @@ use crate::transcript::{EncodedChallenge, TranscriptWrite};
 
 use ff::{Field, PrimeField};
 use group::Curve;
-use halo2curves::pairing::Engine;
+use halo2curves::{pairing::Engine, zal::MsmAccel};
 use rand_core::RngCore;
 use std::fmt::Debug;
 use std::io::{self, Write};
@@ -48,6 +48,7 @@ where
         I,
     >(
         &self,
+        engine: &dyn MsmAccel<E::G1Affine>,
         _: R,
         transcript: &mut T,
         queries: I,
@@ -83,7 +84,7 @@ where
             };
             let w = self
                 .params
-                .commit(&witness_poly, Blind::default())
+                .commit(engine, &witness_poly, Blind::default())
                 .to_affine();
 
             transcript.write_point(w)?;

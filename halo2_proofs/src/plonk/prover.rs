@@ -1,5 +1,6 @@
 use ff::{Field, FromUniformBytes, PrimeField, WithSmallOrderMulGroup};
 use group::Curve;
+use halo2curves::zal::MsmAccel;
 use halo2curves::CurveExt;
 use rand_core::RngCore;
 use std::collections::BTreeSet;
@@ -50,6 +51,7 @@ pub fn create_proof<
     T: TranscriptWrite<Scheme::Curve, E>,
     ConcreteCircuit: Circuit<Scheme::Scalar>,
 >(
+    engine: &dyn MsmAccel<Scheme::Curve>,
     params: &'params Scheme::ParamsProver,
     pk: &ProvingKey<Scheme::Curve>,
     circuits: &[ConcreteCircuit],
@@ -116,7 +118,7 @@ where
             if P::QUERY_INSTANCE {
                 let instance_commitments_projective: Vec<_> = instance_values
                     .iter()
-                    .map(|poly| params.commit_lagrange(poly, Blind::default()))
+                    .map(|poly| params.commit_lagrange(engine, poly, Blind::default()))
                     .collect();
                 let mut instance_commitments =
                     vec![Scheme::Curve::identity(); instance_commitments_projective.len()];
@@ -384,7 +386,7 @@ where
                 let advice_commitments_projective: Vec<_> = advice_values
                     .iter()
                     .zip(blinds.iter())
-                    .map(|(poly, blind)| params.commit_lagrange(poly, *blind))
+                    .map(|(poly, blind)| params.commit_lagrange(engine, poly, *blind))
                     .collect();
                 let mut advice_commitments =
                     vec![Scheme::Curve::identity(); advice_commitments_projective.len()];
@@ -440,6 +442,7 @@ where
                 .iter()
                 .map(|lookup| {
                     lookup.commit_permuted(
+                        engine,
                         pk,
                         params,
                         domain,
@@ -470,6 +473,7 @@ where
         .zip(advice.iter())
         .map(|(instance, advice)| {
             pk.vk.cs.permutation.commit(
+                engine,
                 params,
                 pk,
                 &pk.permutation,
@@ -492,14 +496,16 @@ where
             // Construct and commit to products for each lookup
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .map(|lookup| {
+                    lookup.commit_product(engine, pk, params, beta, gamma, &mut rng, transcript)
+                })
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
     stop_measure(start);
 
     // Commit to the vanishing argument's random polynomial for blinding h(x_3)
-    let vanishing = vanishing::Argument::commit(params, domain, &mut rng, transcript)?;
+    let vanishing = vanishing::Argument::commit(engine, params, domain, &mut rng, transcript)?;
 
     // Obtain challenge for keeping all separate gates linearly independent
     let y: ChallengeY<_> = transcript.squeeze_challenge_scalar();
@@ -548,7 +554,7 @@ where
     stop_measure(start);
 
     // Construct the vanishing argument's h(X) commitments
-    let vanishing = vanishing.construct(params, domain, h_poly, &mut rng, transcript)?;
+    let vanishing = vanishing.construct(engine, params, domain, h_poly, &mut rng, transcript)?;
 
     let x: ChallengeX<_> = transcript.squeeze_challenge_scalar();
     let xn = x.pow([params.n(), 0, 0, 0]);
@@ -690,7 +696,7 @@ where
     let start = start_measure("create_proof", false);
     let prover = P::new(params);
     let proof = prover
-        .create_proof(rng, transcript, instances)
+        .create_proof(engine, rng, transcript, instances)
         .map_err(|_| Error::ConstraintSystemFailure);
     stop_measure(start);
 

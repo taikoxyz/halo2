@@ -38,7 +38,10 @@ where
 /// TEMP
 pub static mut MULTIEXP_TOTAL_TIME: usize = 0;
 
-#[deprecated(since="0.3.2", note="please use ZAL api engine instead,\nsee: https://github.com/privacy-scaling-explorations/halo2/issues/216")]
+#[deprecated(
+    since = "0.3.2",
+    note = "please use ZAL api engine instead,\nsee: https://github.com/privacy-scaling-explorations/halo2/issues/216"
+)]
 fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut C::Curve) {
     let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
 
@@ -131,7 +134,10 @@ fn multiexp_serial<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C], acc: &mut 
 
 /// Performs a small multi-exponentiation operation.
 /// Uses the double-and-add algorithm with doublings shared across points.
-#[deprecated(since="0.3.2", note="please use ZAL api engine instead,\nsee: https://github.com/privacy-scaling-explorations/halo2/issues/216")]
+#[deprecated(
+    since = "0.3.2",
+    note = "please use ZAL api engine instead,\nsee: https://github.com/privacy-scaling-explorations/halo2/issues/216"
+)]
 pub fn small_multiexp<C: CurveAffine>(coeffs: &[C::Scalar], bases: &[C]) -> C::Curve {
     let coeffs: Vec<_> = coeffs.iter().map(|a| a.to_repr()).collect();
     let mut acc = C::Curve::identity();

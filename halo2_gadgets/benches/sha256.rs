@@ -7,6 +7,8 @@ use halo2_proofs::{
 use halo2curves::pasta::{pallas, EqAffine};
 use rand::rngs::OsRng;
 
+use halo2curves::zal::{H2cEngine, MsmAccel};
+
 use std::{
     fs::File,
     io::{prelude::*, BufReader},
@@ -30,7 +32,7 @@ use halo2_proofs::{
 };
 
 #[allow(dead_code)]
-fn bench(name: &str, k: u32, c: &mut Criterion) {
+fn bench(name: &str, engine: &dyn MsmAccel<vesta::Affine>, k: u32, c: &mut Criterion) {
     #[derive(Default)]
     struct MyCircuit {}
 
@@ -131,6 +133,7 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
     if File::open(proof_path).is_err() {
         let mut transcript = Blake2bWrite::<_, _, Challenge255<_>>::init(vec![]);
         create_proof::<IPACommitmentScheme<_>, ProverIPA<_>, _, _, _, _>(
+            engine,
             &params,
             &pk,
             &[circuit],
@@ -170,8 +173,9 @@ fn bench(name: &str, k: u32, c: &mut Criterion) {
 
 #[allow(dead_code)]
 fn criterion_benchmark(c: &mut Criterion) {
-    bench("sha256", 17, c);
-    // bench("sha256", 20, c);
+    let engine = H2cEngine::new();
+    bench("sha256-halo2-engine", &engine, 17, c);
+    // bench("sha256-halo2-engine", &engine, 20, c);
 }
 
 criterion_group!(benches, criterion_benchmark);

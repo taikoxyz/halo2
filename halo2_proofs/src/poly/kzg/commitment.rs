@@ -1,6 +1,4 @@
-use crate::arithmetic::{
-    best_fft, best_multiexp, g_to_lagrange, parallelize, CurveAffine, CurveExt,
-};
+use crate::arithmetic::{best_fft, g_to_lagrange, parallelize, CurveAffine, CurveExt};
 use crate::helpers::SerdeCurveAffine;
 use crate::poly::commitment::{Blind, CommitmentScheme, Params, ParamsProver, ParamsVerifier, MSM};
 use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
@@ -9,6 +7,7 @@ use crate::SerdeFormat;
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
 use halo2curves::pairing::Engine;
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use rand_core::{OsRng, RngCore};
 use std::fmt::Debug;
 use std::marker::PhantomData;
@@ -309,6 +308,7 @@ where
 
     fn commit_lagrange(
         &self,
+        engine: &dyn MsmAccel<E::G1Affine>,
         poly: &Polynomial<E::Scalar, LagrangeCoeff>,
         _: Blind<E::Scalar>,
     ) -> E::G1 {
@@ -317,7 +317,7 @@ where
         let bases = &self.g_lagrange;
         let size = scalars.len();
         assert!(bases.len() >= size);
-        best_multiexp(&scalars, &bases[0..size])
+        engine.msm(&scalars, &bases[0..size])
     }
 
     /// Writes params to a buffer.
@@ -355,13 +355,18 @@ where
         Self::setup(k, OsRng)
     }
 
-    fn commit(&self, poly: &Polynomial<E::Scalar, Coeff>, _: Blind<E::Scalar>) -> E::G1 {
+    fn commit(
+        &self,
+        engine: &dyn MsmAccel<E::G1Affine>,
+        poly: &Polynomial<E::Scalar, Coeff>,
+        _: Blind<E::Scalar>,
+    ) -> E::G1 {
         let mut scalars = Vec::with_capacity(poly.len());
         scalars.extend(poly.iter());
         let bases = &self.g;
         let size = scalars.len();
         assert!(bases.len() >= size);
-        best_multiexp(&scalars, &bases[0..size])
+        engine.msm(&scalars, &bases[0..size])
     }
 
     fn get_g(&self) -> &[E::G1Affine] {
@@ -371,7 +376,7 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::arithmetic::{best_fft, best_multiexp, parallelize, CurveAffine, CurveExt};
+    use crate::arithmetic::{best_fft, parallelize, CurveAffine, CurveExt};
     use crate::poly::commitment::ParamsProver;
     use crate::poly::commitment::{Blind, CommitmentScheme, Params, MSM};
     use crate::poly::kzg::commitment::{ParamsKZG, ParamsVerifierKZG};
@@ -382,6 +387,7 @@ mod test {
     use ff::{Field, PrimeField};
     use group::{prime::PrimeCurveAffine, Curve, Group};
     use halo2curves::bn256::G1Affine;
+    use halo2curves::zal::H2cEngine;
     use std::marker::PhantomData;
     use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -396,6 +402,7 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::bn256::{Bn256, Fr};
 
+        let engine = H2cEngine::new();
         let params = ParamsKZG::<Bn256>::new(K);
         let domain = EvaluationDomain::new(1, K);
 
@@ -409,7 +416,10 @@ mod test {
 
         let alpha = Blind(Fr::random(OsRng));
 
-        assert_eq!(params.commit(&b, alpha), params.commit_lagrange(&a, alpha));
+        assert_eq!(
+            params.commit(&engine, &b, alpha),
+            params.commit_lagrange(&engine, &a, alpha)
+        );
     }
 
     #[test]

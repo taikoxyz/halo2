@@ -6,7 +6,6 @@ use super::multiopen::VerifierIPA;
 use crate::poly::commitment::CommitmentScheme;
 use crate::transcript::TranscriptRead;
 use crate::{
-    arithmetic::best_multiexp,
     plonk::Error,
     poly::{
         commitment::MSM,
@@ -16,6 +15,7 @@ use crate::{
 };
 use ff::Field;
 use group::Curve;
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use halo2curves::CurveAffine;
 use rand_core::{OsRng, RngCore};
 
@@ -69,10 +69,9 @@ impl<'params, C: CurveAffine> GuardIPA<'params, C> {
     }
 
     /// Computes G = ⟨s, params.g⟩
-    pub fn compute_g(&self) -> C {
+    pub fn compute_g(&self, engine: &dyn MsmAccel<C>) -> C {
         let s = compute_s(&self.u, C::Scalar::ONE);
-
-        best_multiexp(&s, &self.msm.params.g).to_affine()
+        engine.msm(&s, &self.msm.params.g).to_affine()
     }
 }
 
@@ -112,7 +111,8 @@ impl<'params, C: CurveAffine>
     /// specific failing proofs, it must re-process the proofs separately.
     #[must_use]
     fn finalize(self) -> bool {
-        self.msm.check()
+        // TODO: Verification is cheap, ZkAccel on verifier is not a priority.
+        self.msm.check(&H2cEngine::new())
     }
 }
 
@@ -140,7 +140,8 @@ impl<'params, C: CurveAffine>
     ) -> Result<Self::Output, Error> {
         let guard = f(self.msm)?;
         let msm = guard.use_challenges();
-        if msm.check() {
+        // ZAL: Verification is (supposedly) cheap, hence we don't use an accelerator engine
+        if msm.check(&H2cEngine::new()) {
             Ok(())
         } else {
             Err(Error::ConstraintSystemFailure)

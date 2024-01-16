@@ -2,11 +2,14 @@ use std::fmt::Debug;
 
 use super::commitment::{KZGCommitmentScheme, ParamsKZG};
 use crate::{
-    arithmetic::{best_multiexp, parallelize, CurveAffine},
+    arithmetic::{parallelize, CurveAffine},
     poly::commitment::MSM,
 };
 use group::{Curve, Group};
-use halo2curves::pairing::{Engine, MillerLoopResult, MultiMillerLoop};
+use halo2curves::{
+    pairing::{Engine, MillerLoopResult, MultiMillerLoop},
+    zal::{H2cEngine, MsmAccel},
+};
 
 /// A multiscalar multiplication in the polynomial commitment scheme
 #[derive(Clone, Default, Debug)]
@@ -58,15 +61,15 @@ impl<E: Engine + Debug> MSM<E::G1Affine> for MSMKZG<E> {
         }
     }
 
-    fn check(&self) -> bool {
-        bool::from(self.eval().is_identity())
+    fn check(&self, engine: &dyn MsmAccel<E::G1Affine>) -> bool {
+        bool::from(self.eval(engine).is_identity())
     }
 
-    fn eval(&self) -> E::G1 {
+    fn eval(&self, engine: &dyn MsmAccel<E::G1Affine>) -> E::G1 {
         use group::prime::PrimeCurveAffine;
         let mut bases = vec![E::G1Affine::identity(); self.scalars.len()];
         E::G1::batch_normalize(&self.bases, &mut bases);
-        best_multiexp(&self.scalars, &bases)
+        engine.msm(&self.scalars, &bases)
     }
 
     fn bases(&self) -> Vec<E::G1> {
@@ -148,12 +151,12 @@ impl<'a, E: MultiMillerLoop + Debug> DualMSM<'a, E> {
     }
 
     /// Performs final pairing check with given verifier params and two channel linear combination
-    pub fn check(self) -> bool {
+    pub fn check(self, engine: &dyn MsmAccel<E::G1Affine>) -> bool {
         let s_g2_prepared = E::G2Prepared::from(self.params.s_g2);
         let n_g2_prepared = E::G2Prepared::from(-self.params.g2);
 
-        let left = self.left.eval();
-        let right = self.right.eval();
+        let left = self.left.eval(engine);
+        let right = self.right.eval(engine);
 
         let (term_1, term_2) = (
             (&left.into(), &s_g2_prepared),

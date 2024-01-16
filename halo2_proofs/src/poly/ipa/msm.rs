@@ -1,11 +1,12 @@
 use super::commitment::{IPACommitmentScheme, ParamsIPA};
-use crate::arithmetic::{best_multiexp, parallelize, CurveAffine};
+use crate::arithmetic::{parallelize, CurveAffine};
 use crate::poly::{
     commitment::{CommitmentScheme, Params, MSM},
     ipa::commitment::ParamsVerifierIPA,
 };
 use ff::Field;
 use group::Group;
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use std::collections::BTreeMap;
 
 /// A multiscalar multiplication in the polynomial commitment scheme
@@ -134,11 +135,11 @@ impl<'a, C: CurveAffine> MSM<C> for MSMIPA<'a, C> {
         self.u_scalar = self.u_scalar.map(|a| a * &factor);
     }
 
-    fn check(&self) -> bool {
-        bool::from(self.eval().is_identity())
+    fn check(&self, engine: &dyn MsmAccel<C>) -> bool {
+        bool::from(self.eval(engine).is_identity())
     }
 
-    fn eval(&self) -> C::Curve {
+    fn eval(&self, engine: &dyn MsmAccel<C>) -> C::Curve {
         let len = self.g_scalars.as_ref().map(|v| v.len()).unwrap_or(0)
             + self.w_scalar.map(|_| 1).unwrap_or(0)
             + self.u_scalar.map(|_| 1).unwrap_or(0)
@@ -169,8 +170,7 @@ impl<'a, C: CurveAffine> MSM<C> for MSMIPA<'a, C> {
         }
 
         assert_eq!(scalars.len(), len);
-
-        best_multiexp(&scalars, &bases)
+        engine.msm(&scalars, &bases)
     }
 
     fn bases(&self) -> Vec<C::CurveExt> {
@@ -231,6 +231,7 @@ mod tests {
     use group::Curve;
     use halo2curves::{
         pasta::{Ep, EpAffine, Fp, Fq},
+        zal::H2cEngine,
         CurveAffine,
     };
 
@@ -239,40 +240,41 @@ mod tests {
         let base: Ep = EpAffine::from_xy(-Fp::one(), Fp::from(2)).unwrap().into();
         let base_viol = base + base;
 
+        let engine = H2cEngine::new();
         let params = ParamsIPA::new(4);
         let mut a: MSMIPA<EpAffine> = MSMIPA::new(&params);
         a.append_term(Fq::one(), base);
         // a = [1] P
-        assert!(!a.clone().check());
+        assert!(!a.clone().check(&engine));
         a.append_term(Fq::one(), base);
         // a = [1+1] P
-        assert!(!a.clone().check());
+        assert!(!a.clone().check(&engine));
         a.append_term(-Fq::one(), base_viol);
         // a = [1+1] P + [-1] 2P
-        assert!(a.clone().check());
+        assert!(a.clone().check(&engine));
         let b = a.clone();
 
         // Append a point that is the negation of an existing one.
         a.append_term(Fq::from(4), -base);
         // a = [1+1-4] P + [-1] 2P
-        assert!(!a.clone().check());
+        assert!(!a.clone().check(&engine));
         a.append_term(Fq::from(2), base_viol);
         // a = [1+1-4] P + [-1+2] 2P
-        assert!(a.clone().check());
+        assert!(a.clone().check(&engine));
 
         // Add two MSMs with common bases.
         a.scale(Fq::from(3));
         a.add_msm(&b);
         // a = [3*(1+1)+(1+1-4)] P + [3*(-1)+(-1+2)] 2P
-        assert!(a.clone().check());
+        assert!(a.clone().check(&engine));
 
         let mut c: MSMIPA<EpAffine> = MSMIPA::new(&params);
         c.append_term(Fq::from(2), base);
         c.append_term(Fq::one(), -base_viol);
         // c = [2] P + [1] (-2P)
-        assert!(c.clone().check());
+        assert!(c.clone().check(&engine));
         // Add two MSMs with bases that differ only in sign.
         a.add_msm(&c);
-        assert!(a.check());
+        assert!(a.check(&engine));
     }
 }

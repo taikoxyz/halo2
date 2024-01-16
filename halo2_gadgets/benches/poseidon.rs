@@ -20,6 +20,8 @@ use halo2_proofs::{
 };
 use halo2curves::pasta::{pallas, vesta, EqAffine, Fp};
 
+use halo2curves::zal::{H2cEngine, MsmAccel};
+
 use halo2_gadgets::poseidon::{
     primitives::{self as poseidon, generate_constants, ConstantLength, Mds, Spec},
     Hash, Pow5Chip, Pow5Config,
@@ -151,6 +153,7 @@ const K: u32 = 7;
 
 fn bench_poseidon<S, const WIDTH: usize, const RATE: usize, const L: usize>(
     name: &str,
+    engine: &dyn MsmAccel<vesta::Affine>,
     c: &mut Criterion,
 ) where
     S: Spec<Fp, WIDTH, RATE> + Copy + Clone,
@@ -188,6 +191,7 @@ fn bench_poseidon<S, const WIDTH: usize, const RATE: usize, const L: usize>(
         let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
         b.iter(|| {
             create_proof::<IPACommitmentScheme<_>, ProverIPA<_>, _, _, _, _>(
+                engine,
                 &params,
                 &pk,
                 &[circuit],
@@ -202,6 +206,7 @@ fn bench_poseidon<S, const WIDTH: usize, const RATE: usize, const L: usize>(
     // Create a proof
     let mut transcript = Blake2bWrite::<_, EqAffine, Challenge255<_>>::init(vec![]);
     create_proof::<IPACommitmentScheme<_>, ProverIPA<_>, _, _, _, _>(
+        engine,
         &params,
         &pk,
         &[circuit],
@@ -229,9 +234,10 @@ fn bench_poseidon<S, const WIDTH: usize, const RATE: usize, const L: usize>(
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-    bench_poseidon::<MySpec<3, 2>, 3, 2, 2>("WIDTH = 3, RATE = 2", c);
-    bench_poseidon::<MySpec<9, 8>, 9, 8, 8>("WIDTH = 9, RATE = 8", c);
-    bench_poseidon::<MySpec<12, 11>, 12, 11, 11>("WIDTH = 12, RATE = 11", c);
+    let engine = H2cEngine::new();
+    bench_poseidon::<MySpec<3, 2>, 3, 2, 2>("WIDTH = 3, RATE = 2, halo2-engine", &engine, c);
+    bench_poseidon::<MySpec<9, 8>, 9, 8, 8>("WIDTH = 9, RATE = 8, halo2-engine", &engine, c);
+    bench_poseidon::<MySpec<12, 11>, 12, 11, 11>("WIDTH = 12, RATE = 11, halo2-engine", &engine, c);
 }
 
 criterion_group!(benches, criterion_benchmark);

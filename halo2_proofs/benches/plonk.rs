@@ -6,8 +6,12 @@ use halo2_proofs::circuit::{Cell, Layouter, SimpleFloorPlanner, Value};
 use halo2_proofs::plonk::*;
 use halo2_proofs::poly::{commitment::ParamsProver, Rotation};
 use halo2_proofs::transcript::{Blake2bRead, Blake2bWrite, Challenge255};
-use halo2curves::pasta::{EqAffine, Fp};
+use halo2curves::pasta::{pallas, vesta};
 use rand_core::OsRng;
+
+use halo2curves::zal::{H2cEngine, MsmAccel};
+use constantine_halo2_zal::CttEngine;
+use constantine_core::hardware;
 
 use halo2_proofs::{
     poly::{
@@ -25,7 +29,11 @@ use std::marker::PhantomData;
 
 use criterion::{BenchmarkId, Criterion};
 
-fn criterion_benchmark(c: &mut Criterion) {
+fn bench_plonk(
+    engine_name: &str,
+    engine: &dyn MsmAccel<vesta::Affine>,
+    c: &mut Criterion,
+) {
     /// This represents an advice column at a certain row in the ConstraintSystem
     #[derive(Copy, Clone, Debug)]
     pub struct Variable(Column<Advice>, usize);
@@ -261,9 +269,9 @@ fn criterion_benchmark(c: &mut Criterion) {
         }
     }
 
-    fn keygen(k: u32) -> (ParamsIPA<EqAffine>, ProvingKey<EqAffine>) {
-        let params: ParamsIPA<EqAffine> = ParamsIPA::new(k);
-        let empty_circuit: MyCircuit<Fp> = MyCircuit {
+    fn keygen(k: u32) -> (ParamsIPA<vesta::Affine>, ProvingKey<vesta::Affine>) {
+        let params: ParamsIPA<vesta::Affine> = ParamsIPA::new(k);
+        let empty_circuit: MyCircuit<pallas::Base> = MyCircuit {
             a: Value::unknown(),
             k,
         };
@@ -272,16 +280,17 @@ fn criterion_benchmark(c: &mut Criterion) {
         (params, pk)
     }
 
-    fn prover(k: u32, params: &ParamsIPA<EqAffine>, pk: &ProvingKey<EqAffine>) -> Vec<u8> {
+    fn prover(engine: &dyn MsmAccel<vesta::Affine>, k: u32, params: &ParamsIPA<vesta::Affine>, pk: &ProvingKey<vesta::Affine>) -> Vec<u8> {
         let rng = OsRng;
 
-        let circuit: MyCircuit<Fp> = MyCircuit {
-            a: Value::known(Fp::random(rng)),
+        let circuit: MyCircuit<pallas::Base> = MyCircuit {
+            a: Value::known(pallas::Base::random(rng)),
             k,
         };
 
-        let mut transcript = Blake2bWrite::<_, _, Challenge255<EqAffine>>::init(vec![]);
-        create_proof::<IPACommitmentScheme<EqAffine>, ProverIPA<EqAffine>, _, _, _, _>(
+        let mut transcript = Blake2bWrite::<_, _, Challenge255<vesta::Affine>>::init(vec![]);
+        create_proof::<IPACommitmentScheme<vesta::Affine>, ProverIPA<vesta::Affine>, _, _, _, _>(
+            engine,
             params,
             pk,
             &[circuit],
@@ -293,7 +302,7 @@ fn criterion_benchmark(c: &mut Criterion) {
         transcript.finalize()
     }
 
-    fn verifier(params: &ParamsIPA<EqAffine>, vk: &VerifyingKey<EqAffine>, proof: &[u8]) {
+    fn verifier(params: &ParamsIPA<vesta::Affine>, vk: &VerifyingKey<vesta::Affine>, proof: &[u8]) {
         let strategy = SingleStrategy::new(params);
         let mut transcript = Blake2bRead::<_, _, Challenge255<_>>::init(proof);
         assert!(verify_proof(params, vk, strategy, &[&[]], &mut transcript).is_ok());
@@ -310,7 +319,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     }
     keygen_group.finish();
 
-    let mut prover_group = c.benchmark_group("plonk-prover");
+    let mut prover_group = c.benchmark_group("plonk-prover-".to_string() + engine_name);
     prover_group.sample_size(10);
     for k in k_range.clone() {
         let (params, pk) = keygen(k);
@@ -319,7 +328,7 @@ fn criterion_benchmark(c: &mut Criterion) {
             BenchmarkId::from_parameter(k),
             &(k, &params, &pk),
             |b, &(k, params, pk)| {
-                b.iter(|| prover(k, params, pk));
+                b.iter(|| prover(engine, k, params, pk));
             },
         );
     }
@@ -328,7 +337,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut verifier_group = c.benchmark_group("plonk-verifier");
     for k in k_range {
         let (params, pk) = keygen(k);
-        let proof = prover(k, &params, &pk);
+        let proof = prover(engine, k, &params, &pk);
 
         verifier_group.bench_with_input(
             BenchmarkId::from_parameter(k),
@@ -339,6 +348,13 @@ fn criterion_benchmark(c: &mut Criterion) {
         );
     }
     verifier_group.finish();
+}
+
+fn criterion_benchmark(c: &mut Criterion) {
+    let h2c_engine = H2cEngine::new();
+    bench_plonk("halo2-engine", &h2c_engine, c);
+    let ctt_engine = CttEngine::new(hardware::get_num_threads_os());
+    bench_plonk("constantine-engine", &ctt_engine, c)
 }
 
 criterion_group!(benches, criterion_benchmark);

@@ -1,10 +1,9 @@
 use ff::Field;
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use rand_core::RngCore;
 
 use super::{Params, ParamsIPA};
-use crate::arithmetic::{
-    best_multiexp, compute_inner_product, eval_polynomial, parallelize, CurveAffine,
-};
+use crate::arithmetic::{compute_inner_product, eval_polynomial, parallelize, CurveAffine};
 
 use crate::poly::commitment::ParamsProver;
 use crate::poly::{commitment::Blind, Coeff, Polynomial};
@@ -32,6 +31,7 @@ pub fn create_proof<
     R: RngCore,
     T: TranscriptWrite<C, E>,
 >(
+    engine: &dyn MsmAccel<C>,
     params: &ParamsIPA<C>,
     mut rng: R,
     transcript: &mut T,
@@ -56,7 +56,7 @@ pub fn create_proof<
     let s_poly_blind = Blind(C::Scalar::random(&mut rng));
 
     // Write a commitment to the random polynomial to the transcript
-    let s_poly_commitment = params.commit(&s_poly, s_poly_blind).to_affine();
+    let s_poly_commitment = params.commit(engine, &s_poly, s_poly_blind).to_affine();
     transcript.write_point(s_poly_commitment)?;
 
     // Challenge that will ensure that the prover cannot change P but can only
@@ -106,14 +106,14 @@ pub fn create_proof<
         //
         // TODO: If we modify multiexp to take "extra" bases, we could speed
         // this piece up a bit by combining the multiexps.
-        let l_j = best_multiexp(&p_prime[half..], &g_prime[0..half]);
-        let r_j = best_multiexp(&p_prime[0..half], &g_prime[half..]);
+        let l_j = engine.msm(&p_prime[half..], &g_prime[0..half]);
+        let r_j = engine.msm(&p_prime[0..half], &g_prime[half..]);
         let value_l_j = compute_inner_product(&p_prime[half..], &b[0..half]);
         let value_r_j = compute_inner_product(&p_prime[0..half], &b[half..]);
         let l_j_randomness = C::Scalar::random(&mut rng);
         let r_j_randomness = C::Scalar::random(&mut rng);
-        let l_j = l_j + &best_multiexp(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
-        let r_j = r_j + &best_multiexp(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
+        let l_j = l_j + &engine.msm(&[value_l_j * &z, l_j_randomness], &[params.u, params.w]);
+        let r_j = r_j + &engine.msm(&[value_r_j * &z, r_j_randomness], &[params.u, params.w]);
         let l_j = l_j.to_affine();
         let r_j = r_j.to_affine();
 

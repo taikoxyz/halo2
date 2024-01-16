@@ -3,9 +3,7 @@
 //!
 //! [halo]: https://eprint.iacr.org/2019/1021
 
-use crate::arithmetic::{
-    best_fft, best_multiexp, g_to_lagrange, parallelize, CurveAffine, CurveExt,
-};
+use crate::arithmetic::{best_fft, g_to_lagrange, parallelize, CurveAffine, CurveExt};
 use crate::helpers::CurveRead;
 use crate::poly::commitment::{Blind, CommitmentScheme, Params, ParamsProver, ParamsVerifier, MSM};
 use crate::poly::ipa::msm::MSMIPA;
@@ -13,6 +11,7 @@ use crate::poly::{Coeff, LagrangeCoeff, Polynomial};
 
 use ff::{Field, PrimeField};
 use group::{prime::PrimeCurveAffine, Curve, Group};
+use halo2curves::zal::MsmAccel;
 use std::marker::PhantomData;
 use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -57,7 +56,7 @@ impl<C: CurveAffine> CommitmentScheme for IPACommitmentScheme<C> {
     }
 }
 
-/// Verifier parameters
+/// ZAL: Verifier parameters
 pub type ParamsVerifierIPA<C> = ParamsIPA<C>;
 
 impl<'params, C: CurveAffine> ParamsVerifier<'params, C> for ParamsIPA<C> {}
@@ -91,6 +90,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
     /// `r`.
     fn commit_lagrange(
         &self,
+        engine: &dyn MsmAccel<C>,
         poly: &Polynomial<C::Scalar, LagrangeCoeff>,
         r: Blind<C::Scalar>,
     ) -> C::Curve {
@@ -103,7 +103,7 @@ impl<'params, C: CurveAffine> Params<'params, C> for ParamsIPA<C> {
         tmp_bases.extend(self.g_lagrange.iter());
         tmp_bases.push(self.w);
 
-        best_multiexp::<C>(&tmp_scalars, &tmp_bases)
+        engine.msm(&tmp_scalars, &tmp_bases)
     }
 
     /// Writes params to a buffer.
@@ -213,7 +213,12 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
     /// This computes a commitment to a polynomial described by the provided
     /// slice of coefficients. The commitment will be blinded by the blinding
     /// factor `r`.
-    fn commit(&self, poly: &Polynomial<C::Scalar, Coeff>, r: Blind<C::Scalar>) -> C::Curve {
+    fn commit(
+        &self,
+        engine: &dyn MsmAccel<C>,
+        poly: &Polynomial<C::Scalar, Coeff>,
+        r: Blind<C::Scalar>,
+    ) -> C::Curve {
         let mut tmp_scalars = Vec::with_capacity(poly.len() + 1);
         let mut tmp_bases = Vec::with_capacity(poly.len() + 1);
 
@@ -223,7 +228,7 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
         tmp_bases.extend(self.g.iter());
         tmp_bases.push(self.w);
 
-        best_multiexp::<C>(&tmp_scalars, &tmp_bases)
+        engine.msm(&tmp_scalars, &tmp_bases)
     }
 
     fn get_g(&self) -> &[C] {
@@ -234,7 +239,7 @@ impl<'params, C: CurveAffine> ParamsProver<'params, C> for ParamsIPA<C> {
 #[cfg(test)]
 mod test {
 
-    use crate::arithmetic::{best_fft, best_multiexp, parallelize, CurveAffine, CurveExt};
+    use crate::arithmetic::{best_fft, parallelize, CurveAffine, CurveExt};
     use crate::helpers::CurveRead;
     use crate::poly::commitment::ParamsProver;
     use crate::poly::commitment::{Blind, CommitmentScheme, Params, MSM};
@@ -244,6 +249,7 @@ mod test {
 
     use ff::{Field, PrimeField};
     use group::{prime::PrimeCurveAffine, Curve, Group};
+    use halo2curves::zal::H2cEngine;
     use std::marker::PhantomData;
     use std::ops::{Add, AddAssign, Mul, MulAssign};
 
@@ -258,6 +264,7 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::pasta::{EpAffine, Fq};
 
+        let engine = H2cEngine::new();
         let params = ParamsIPA::<EpAffine>::new(K);
         let domain = EvaluationDomain::new(1, K);
 
@@ -271,7 +278,10 @@ mod test {
 
         let alpha = Blind(Fq::random(OsRng));
 
-        assert_eq!(params.commit(&b, alpha), params.commit_lagrange(&a, alpha));
+        assert_eq!(
+            params.commit(&engine, &b, alpha),
+            params.commit_lagrange(&engine, &a, alpha)
+        );
     }
 
     #[test]
@@ -283,6 +293,7 @@ mod test {
         use crate::poly::EvaluationDomain;
         use halo2curves::pasta::{EqAffine, Fp};
 
+        let engine = H2cEngine::new();
         let params: ParamsIPA<EqAffine> = ParamsIPA::<EqAffine>::new(K);
         let domain = EvaluationDomain::new(1, K);
 
@@ -296,7 +307,10 @@ mod test {
 
         let alpha = Blind(Fp::random(OsRng));
 
-        assert_eq!(params.commit(&b, alpha), params.commit_lagrange(&a, alpha));
+        assert_eq!(
+            params.commit(&engine, &b, alpha),
+            params.commit_lagrange(&engine, &a, alpha)
+        );
     }
 
     #[test]
@@ -319,6 +333,7 @@ mod test {
 
         let rng = OsRng;
 
+        let engine = H2cEngine::new();
         let params = ParamsIPA::<EpAffine>::new(K);
         let mut params_buffer = vec![];
         <ParamsIPA<_> as Params<_>>::write(&params, &mut params_buffer).unwrap();
@@ -334,7 +349,7 @@ mod test {
 
         let blind = Blind(Fq::random(rng));
 
-        let p = params.commit(&px, blind).to_affine();
+        let p = params.commit(&engine, &px, blind).to_affine();
 
         let mut transcript =
             Blake2bWrite::<Vec<u8>, EpAffine, Challenge255<EpAffine>>::init(vec![]);
@@ -345,7 +360,7 @@ mod test {
         transcript.write_scalar(v).unwrap();
 
         let (proof, ch_prover) = {
-            create_proof(&params, rng, &mut transcript, &px, blind, *x).unwrap();
+            create_proof(&engine, &params, rng, &mut transcript, &px, blind, *x).unwrap();
             let ch_prover = transcript.squeeze_challenge();
             (transcript.finalize(), ch_prover)
         };
@@ -371,12 +386,12 @@ mod test {
         {
             // Test use_challenges()
             let msm_challenges = guard.clone().use_challenges();
-            assert!(msm_challenges.check());
+            assert!(msm_challenges.check(&engine));
 
             // Test use_g()
-            let g = guard.compute_g();
+            let g = guard.compute_g(&engine);
             let (msm_g, _accumulator) = guard.clone().use_g(g);
-            assert!(msm_g.check());
+            assert!(msm_g.check(&engine));
         }
     }
 }

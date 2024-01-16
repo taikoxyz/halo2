@@ -2,7 +2,7 @@ use std::{io, marker::PhantomData};
 
 use ff::FromUniformBytes;
 use group::ff::Field;
-use halo2curves::CurveAffine;
+use halo2curves::{zal::H2cEngine, CurveAffine};
 use rand_core::{OsRng, RngCore};
 use rayon::iter::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
@@ -130,7 +130,8 @@ where
             .try_reduce(|| params.empty_msm(), |a, b| Ok(accumulate_msm(a, b)));
 
         match final_msm {
-            Ok(msm) => msm.check(),
+            // ZAL: Verification is (supposedly) cheap, hence we don't use an accelerator engine
+            Ok(msm) => msm.check(&H2cEngine::new()),
             Err(_) => false,
         }
     }

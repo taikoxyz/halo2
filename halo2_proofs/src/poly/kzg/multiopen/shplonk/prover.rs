@@ -16,6 +16,7 @@ use crate::transcript::{EncodedChallenge, TranscriptWrite};
 use ff::{Field, PrimeField};
 use group::Curve;
 use halo2curves::pairing::Engine;
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 use rayon::prelude::*;
 use std::fmt::Debug;
@@ -124,6 +125,7 @@ where
         I,
     >(
         &self,
+        engine: &dyn MsmAccel<E::G1Affine>,
         _: R,
         transcript: &mut T,
         queries: I,
@@ -203,7 +205,10 @@ where
             .reduce(|acc, poly| acc + &poly)
             .unwrap();
 
-        let h = self.params.commit(&h_x, Blind::default()).to_affine();
+        let h = self
+            .params
+            .commit(engine, &h_x, Blind::default())
+            .to_affine();
         transcript.write_point(h)?;
         let u: ChallengeU<_> = transcript.squeeze_challenge_scalar();
 
@@ -278,7 +283,10 @@ where
             _marker: PhantomData,
         };
 
-        let h = self.params.commit(&h_x, Blind::default()).to_affine();
+        let h = self
+            .params
+            .commit(engine, &h_x, Blind::default())
+            .to_affine();
         transcript.write_point(h)?;
 
         Ok(())

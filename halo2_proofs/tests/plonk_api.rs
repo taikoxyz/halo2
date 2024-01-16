@@ -18,6 +18,7 @@ use halo2_proofs::transcript::{
     Blake2bRead, Blake2bWrite, Challenge255, EncodedChallenge, TranscriptReadBuffer,
     TranscriptWriterBuffer,
 };
+use halo2curves::zal::{H2cEngine, MsmAccel};
 use rand_core::{OsRng, RngCore};
 use std::marker::PhantomData;
 
@@ -462,6 +463,7 @@ fn plonk_api() {
         R: RngCore,
         T: TranscriptWriterBuffer<Vec<u8>, Scheme::Curve, E>,
     >(
+        engine: &dyn MsmAccel<Scheme::Curve>,
         rng: R,
         params: &'params Scheme::ParamsProver,
         pk: &ProvingKey<Scheme::Curve>,
@@ -479,6 +481,7 @@ fn plonk_api() {
         let mut transcript = T::init(vec![]);
 
         create_plonk_proof::<Scheme, P, _, _, _, _>(
+            engine,
             params,
             pk,
             &[circuit.clone(), circuit.clone()],
@@ -540,13 +543,14 @@ fn plonk_api() {
         type Scheme = KZGCommitmentScheme<Bn256>;
         bad_keys!(Scheme);
 
+        let engine = H2cEngine::new();
         let params = ParamsKZG::<Bn256>::new(K);
         let rng = OsRng;
 
         let pk = keygen::<KZGCommitmentScheme<_>>(&params);
 
         let proof = create_proof::<_, ProverGWC<_>, _, _, Blake2bWrite<_, _, Challenge255<_>>>(
-            rng, &params, &pk,
+            &engine, rng, &params, &pk,
         );
 
         let verifier_params = params.verifier_params();
@@ -569,13 +573,14 @@ fn plonk_api() {
         type Scheme = KZGCommitmentScheme<Bn256>;
         bad_keys!(Scheme);
 
+        let engine = H2cEngine::new();
         let params = ParamsKZG::<Bn256>::new(K);
         let rng = OsRng;
 
         let pk = keygen::<KZGCommitmentScheme<_>>(&params);
 
         let proof = create_proof::<_, ProverSHPLONK<_>, _, _, Blake2bWrite<_, _, Challenge255<_>>>(
-            rng, &params, &pk,
+            &engine, rng, &params, &pk,
         );
 
         let verifier_params = params.verifier_params();
@@ -598,13 +603,14 @@ fn plonk_api() {
         type Scheme = IPACommitmentScheme<EqAffine>;
         bad_keys!(Scheme);
 
+        let engine = H2cEngine::new();
         let params = ParamsIPA::<EqAffine>::new(K);
         let rng = OsRng;
 
         let pk = keygen::<IPACommitmentScheme<EqAffine>>(&params);
 
         let proof = create_proof::<_, ProverIPA<_>, _, _, Blake2bWrite<_, _, Challenge255<_>>>(
-            rng, &params, &pk,
+            &engine, rng, &params, &pk,
         );
 
         let verifier_params = params.verifier_params();

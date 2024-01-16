@@ -3,6 +3,7 @@ use group::{
     ff::{BatchInvert, Field},
     Curve,
 };
+use halo2curves::zal::MsmAccel;
 use rand_core::RngCore;
 use std::iter::{self, ExactSizeIterator};
 
@@ -51,6 +52,7 @@ impl Argument {
         T: TranscriptWrite<C, E>,
     >(
         &self,
+        engine: &dyn MsmAccel<C>,
         params: &P,
         pk: &plonk::ProvingKey<C>,
         pkey: &ProvingKey<C>,
@@ -167,7 +169,8 @@ impl Argument {
 
             let blind = Blind(C::Scalar::random(&mut rng));
 
-            let permutation_product_commitment_projective = params.commit_lagrange(&z, blind);
+            let permutation_product_commitment_projective =
+                params.commit_lagrange(engine, &z, blind);
             let permutation_product_blind = blind;
             let z = domain.lagrange_to_coeff(z);
             let permutation_product_poly = z.clone();

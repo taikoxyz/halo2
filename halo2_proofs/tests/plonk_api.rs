@@ -1,7 +1,8 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::op_ref)]
 
-// use assert_matches::assert_matches;
+use assert_matches::assert_matches;
+use ff::PrimeField;
 use halo2_proofs::arithmetic::{Field, FieldExt};
 #[cfg(feature = "parallel_syn")]
 use halo2_proofs::circuit::Region;
@@ -70,6 +71,13 @@ impl PlonkConfig {
         let sp = meta.fixed_column();
         let sl = meta.lookup_table_column();
 
+        // Add to test mvlookup
+        let dummy = meta.complex_selector();
+        let dummy_2 = meta.complex_selector();
+        let dummy_3 = meta.complex_selector();
+
+        let dummy_table = meta.lookup_table_column();
+
         /*
          *   A         B      ...  sl
          * [
@@ -89,6 +97,21 @@ impl PlonkConfig {
         meta.lookup("lookup", |meta| {
             let a_ = meta.query_any(a, Rotation::cur());
             vec![(a_, sl)]
+        });
+
+        // Add to test mvlookup
+        meta.lookup("lookup_same", |meta| {
+            let a_ = meta.query_any(a, Rotation::cur());
+            vec![(a_, sl)]
+        });
+
+        meta.lookup("lookup_same", |meta| {
+            let b_ = meta.query_any(b, Rotation::cur());
+            let dummy = meta.query_selector(dummy);
+            let dummy_2 = meta.query_selector(dummy_2);
+            let dummy_3 = meta.query_selector(dummy_3);
+
+            vec![(dummy * dummy_2 * dummy_3 * b_, dummy_table)]
         });
 
         meta.create_gate("Combined add-mult", |meta| {

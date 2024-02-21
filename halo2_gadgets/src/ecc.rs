@@ -628,34 +628,20 @@ pub(crate) mod tests {
     }
 
     impl FixedPoint<pallas::Affine> for FullWidth {
-        type FixedScalarKind = FullScalar;
+    type FixedScalarKind = FullScalar;
 
-        fn generator(&self) -> pallas::Affine {
-            self.0
-        }
-
-        fn u(&self) -> Vec<[[u8; 32]; H]> {
-            self.1
-                .iter()
-                .map(|(_, us)| {
-                    [
-                        us[0].to_repr(),
-                        us[1].to_repr(),
-                        us[2].to_repr(),
-                        us[3].to_repr(),
-                        us[4].to_repr(),
-                        us[5].to_repr(),
-                        us[6].to_repr(),
-                        us[7].to_repr(),
-                    ]
-                })
-                .collect()
-        }
-
-        fn z(&self) -> Vec<u64> {
-            self.1.iter().map(|(z, _)| *z).collect()
-        }
+    fn generator(&self) -> pallas::Affine {
+        self.0
     }
+
+    fn u(&self) -> Vec<[[u8; 32]; H]> {
+        self.1.iter().map(|(_, us)| us.iter().map(|u| u.to_repr()).collect()).collect()
+    }
+
+    fn z(&self) -> Vec<u64> {
+        self.1.iter().map(|(z, _)| *z).collect()
+    }
+}
 
     impl FixedPoint<pallas::Affine> for BaseField {
         type FixedScalarKind = BaseFieldElem;

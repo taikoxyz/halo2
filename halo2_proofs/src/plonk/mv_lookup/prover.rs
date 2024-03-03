@@ -329,7 +329,7 @@ impl<C: CurveAffine> Prepared<C> {
             for i in 0..u {
                 // Π(φ_i(X))
                 let fi_prod = || {
-                    let mut prod = C::Scalar::one();
+                    let mut prod = C::Scalar::ONE;
                     for compressed_input_expression in self.compressed_inputs_expressions.iter() {
                         prod *= *beta + compressed_input_expression[i];
                     }

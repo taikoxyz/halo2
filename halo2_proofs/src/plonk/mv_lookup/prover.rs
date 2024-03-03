@@ -1,15 +1,13 @@
 use super::super::{
-    circuit::Expression, ChallengeBeta, ChallengeTheta, ChallengeX, Error,
-    ProvingKey,
+    circuit::Expression, ChallengeBeta, ChallengeTheta, ChallengeX, Error, ProvingKey,
 };
 use super::Argument;
 use crate::plonk::evaluation::evaluate;
 use crate::{
-    arithmetic::{eval_polynomial, parallelize, parallelize_naive, CurveAffine, Field, par_invert},
+    arithmetic::{eval_polynomial, par_invert, parallelize, parallelize_naive, CurveAffine, Field},
     poly::{
         commitment::{Blind, Params},
-        Coeff, EvaluationDomain,  LagrangeCoeff, Polynomial, ProverQuery,
-        Rotation,
+        Coeff, EvaluationDomain, LagrangeCoeff, Polynomial, ProverQuery, Rotation,
     },
     transcript::{EncodedChallenge, TranscriptWrite},
 };
@@ -21,7 +19,9 @@ use std::{
     ops::{Mul, MulAssign},
 };
 
-use rayon::prelude::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator, ParallelSliceMut};
+use rayon::prelude::{
+    IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator, ParallelSliceMut,
+};
 
 #[derive(Debug)]
 pub(in crate::plonk) struct Prepared<C: CurveAffine> {

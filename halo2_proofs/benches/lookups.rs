@@ -12,12 +12,11 @@ use halo2curves::pairing::Engine;
 use rand_core::OsRng;
 
 use halo2_proofs::{
-    poly::
-        kzg::{
-            commitment::{KZGCommitmentScheme, ParamsKZG},
-            multiopen::ProverGWC,
-            strategy::SingleStrategy,
-        },
+    poly::kzg::{
+        commitment::{KZGCommitmentScheme, ParamsKZG},
+        multiopen::ProverGWC,
+        strategy::SingleStrategy,
+    },
     transcript::{TranscriptReadBuffer, TranscriptWriterBuffer},
 };
 
@@ -59,7 +58,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
             meta.create_gate("degree 6 gate", |meta| {
                 let dummy_selector = meta.query_selector(dummy_selector);
-                let constraints = vec![dummy_selector.clone(); 4].iter()
+                let constraints = vec![dummy_selector.clone(); 4]
+                    .iter()
                     .fold(dummy_selector.clone(), |acc, val| acc * val.clone());
                 Constraints::with_selector(dummy_selector, Some(constraints))
             });

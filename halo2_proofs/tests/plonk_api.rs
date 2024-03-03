@@ -322,19 +322,19 @@ fn plonk_api() {
                 let a_ = meta.query_any(a, Rotation::cur());
                 vec![(a_, sl)]
             });
-            
+
             // Add to test mvlookup
             meta.lookup("lookup_same", |meta| {
                 let a_ = meta.query_any(a, Rotation::cur());
                 vec![(a_, sl)]
             });
-    
+
             meta.lookup("lookup_same", |meta| {
                 let b_ = meta.query_any(b, Rotation::cur());
                 let dummy = meta.query_selector(dummy);
                 let dummy_2 = meta.query_selector(dummy_2);
                 let dummy_3 = meta.query_selector(dummy_3);
-    
+
                 vec![(dummy * dummy_2 * dummy_3 * b_, dummy_table)]
             });
 
@@ -644,7 +644,7 @@ fn plonk_api() {
 
     test_plonk_api_ipa();
     */
-    
+
     test_plonk_api_gwc();
     test_plonk_api_shplonk();
 }

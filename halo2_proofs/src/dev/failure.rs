@@ -609,9 +609,19 @@ fn render_lookup<F: Field>(
             let cell_values = input.evaluate(
                 &|_| BTreeMap::default(),
                 &|_| panic!("virtual selectors are removed during optimization"),
-                &cell_value(&util::load(n, row, &cs.fixed_queries, prover.fixed.as_slice())),
+                &cell_value(&util::load(
+                    n,
+                    row,
+                    &cs.fixed_queries,
+                    prover.fixed.as_slice(),
+                )),
                 &cell_value(&util::load(n, row, &cs.advice_queries, &prover.advice)),
-                &cell_value(&util::load_instance(n, row, &cs.instance_queries, &prover.instance)),
+                &cell_value(&util::load_instance(
+                    n,
+                    row,
+                    &cs.instance_queries,
+                    &prover.instance,
+                )),
                 &|_| BTreeMap::default(),
                 &|a| a,
                 &|mut a, mut b| {
@@ -638,7 +648,7 @@ fn render_lookup<F: Field>(
                     .or_default()
                     .entry(cell.column)
                     .or_insert(format!("x{}", i));
-            } 
+            }
             if i != 0 {
                 eprintln!();
             }

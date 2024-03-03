@@ -1,8 +1,6 @@
 use std::iter;
 
-use super::super::{
-    circuit::Expression, ChallengeBeta, ChallengeTheta, ChallengeX,
-};
+use super::super::{circuit::Expression, ChallengeBeta, ChallengeTheta, ChallengeX};
 use super::Argument;
 use crate::{
     arithmetic::{CurveAffine, Field},
@@ -133,15 +131,11 @@ impl<C: CurveAffine> Evaluated<C> {
 
             let tau = t_eval + *beta;
             // Π(φ_i(X))
-            let prod_fi = f_evals
-                .iter()
-                .fold(C::Scalar::ONE, |acc, eval| acc * eval);
+            let prod_fi = f_evals.iter().fold(C::Scalar::ONE, |acc, eval| acc * eval);
             // ∑ 1/(φ_i(X))
             let sum_inv_fi = {
                 f_evals.batch_invert();
-                f_evals
-                    .iter()
-                    .fold(C::Scalar::ZERO, |acc, eval| acc + eval)
+                f_evals.iter().fold(C::Scalar::ZERO, |acc, eval| acc + eval)
             };
 
             // LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))

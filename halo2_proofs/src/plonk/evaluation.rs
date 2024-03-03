@@ -1,3 +1,4 @@
+use super::{shuffle, ConstraintSystem, Expression};
 use crate::multicore;
 use crate::plonk::{mv_lookup, permutation, Any, ProvingKey};
 use crate::poly::Basis;
@@ -6,10 +7,12 @@ use crate::{
     poly::{Coeff, ExtendedLagrangeCoeff, Polynomial, Rotation},
 };
 use group::ff::{Field, PrimeField, WithSmallOrderMulGroup};
-use super::{shuffle, ConstraintSystem, Expression};
 
 #[cfg(not(feature = "logup_skip_inv"))]
-use rayon::{slice::ParallelSlice, prelude::{ParallelIterator, IntoParallelIterator}};
+use rayon::{
+    prelude::{IntoParallelIterator, ParallelIterator},
+    slice::ParallelSlice,
+};
 
 #[cfg(not(feature = "logup_skip_inv"))]
 use crate::arithmetic::par_invert;
@@ -269,7 +272,7 @@ impl<C: CurveAffine> Evaluator<C> {
                 compressed_table_coset,
                 ValueSource::Beta(),
             ));
-           /*
+            /*
                 a) f_i + beta
                 b) t + beta
             */
@@ -482,7 +485,6 @@ impl<C: CurveAffine> Evaluator<C> {
                 });
             }
 
-            
             // For lookups, compute inputs_inv_sum = ∑ 1 / (f_i(X) + beta)
             // The outer vector has capacity self.lookups.len()
             #[cfg(not(feature = "logup_skip_inv"))]
@@ -497,50 +499,47 @@ impl<C: CurveAffine> Evaluator<C> {
                         .map(|idx| {
                             let mut inputs_eval_data: Vec<_> = inputs_lookup_evaluator
                                 .iter()
-                                .map(|input_lookup_evaluator| {
-                                    input_lookup_evaluator.instance()
-                                })
+                                .map(|input_lookup_evaluator| input_lookup_evaluator.instance())
                                 .collect();
 
                             inputs_lookup_evaluator
-                            .iter()
-                            .zip(inputs_eval_data.iter_mut())
-                            .map(|(input_lookup_evaluator, input_eval_data)| {
-                                input_lookup_evaluator.evaluate(
-                                    input_eval_data,
-                                    fixed,
-                                    advice,
-                                    instance,
-                                    challenges,
-                                    &beta,
-                                    &gamma,
-                                    &theta,
-                                    &y,
-                                    &C::ScalarExt::ZERO,
-                                    idx,
-                                    rot_scale,
-                                    isize,
-                                )
-                            })
-                            .collect()
-                    })
-                    .collect();
+                                .iter()
+                                .zip(inputs_eval_data.iter_mut())
+                                .map(|(input_lookup_evaluator, input_eval_data)| {
+                                    input_lookup_evaluator.evaluate(
+                                        input_eval_data,
+                                        fixed,
+                                        advice,
+                                        instance,
+                                        challenges,
+                                        &beta,
+                                        &gamma,
+                                        &theta,
+                                        &y,
+                                        &C::ScalarExt::ZERO,
+                                        idx,
+                                        rot_scale,
+                                        isize,
+                                    )
+                                })
+                                .collect()
+                        })
+                        .collect();
 
                     let mut inputs_values_for_extended_domain: Vec<C::Scalar> =
                         inputs_values_for_extended_domain
-                        .into_iter()
-                        .flatten()
-                        .collect();
+                            .into_iter()
+                            .flatten()
+                            .collect();
 
                     par_invert(&mut inputs_values_for_extended_domain);
 
                     let inputs_len = inputs_lookup_evaluator.len();
 
                     inputs_values_for_extended_domain
-                    .par_chunks_exact(inputs_len)
-                    .map(|values| values.iter().sum())
-                    .collect::<Vec<_>>()
-
+                        .par_chunks_exact(inputs_len)
+                        .map(|values| values.iter().sum())
+                        .collect::<Vec<_>>()
                 })
                 .collect();
 
@@ -560,7 +559,7 @@ impl<C: CurveAffine> Evaluator<C> {
                     LHS = τ(X) * Π(φ_i(X)) * (ϕ(gX) - ϕ(X))
                     RHS = τ(X) * Π(φ_i(X)) * (∑ 1/(φ_i(X)) - m(X) / τ(X))))      (1)
                         = (τ(X) * Π(φ_i(X)) * ∑ 1/(φ_i(X))) - Π(φ_i(X)) * m(X)
-                        = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))                       
+                        = Π(φ_i(X)) * (τ(X) * ∑ 1/(φ_i(X)) - m(X))
                         = ∑_i τ(X) * Π_{j != i} φ_j(X) - m(X) * Π(φ_i(X))        (2)
                 */
                 parallelize(&mut values, |values, start| {
@@ -639,7 +638,7 @@ impl<C: CurveAffine> Evaluator<C> {
                                 .fold(C::Scalar::ZERO, |acc, x| acc + x);
                             inputs * table_value - inputs_prod * m_coset[idx]
                         };
-                        
+
                         #[cfg(not(feature = "logup_skip_inv"))]
                         let rhs = {
                             // ∑ 1 / (f_i(X) + beta) at ω^idx

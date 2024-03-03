@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use super::{mv_lookup, permutation, shuffle, Assigned, Error};
 use crate::circuit::layouter::SyncDeps;
 use crate::dev::metadata;
@@ -10,6 +9,7 @@ use core::cmp::max;
 use core::ops::{Add, Mul};
 use ff::Field;
 use sealed::SealedPhase;
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::iter::{Product, Sum};
@@ -1825,7 +1825,7 @@ impl<F: Field> ConstraintSystem<F> {
             for input in inputs.iter().skip(1) {
                 let cur_input_degree = input.iter().map(|expr| expr.degree()).max().unwrap();
                 let mut indicator = false;
-                for arg in args.iter_mut() {           
+                for arg in args.iter_mut() {
                     // try to fit input in one of the args
                     let cur_argument_degree = arg.required_degree();
                     let new_potential_degree = cur_argument_degree + cur_input_degree;

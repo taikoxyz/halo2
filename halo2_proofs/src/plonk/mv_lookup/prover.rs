@@ -143,14 +143,14 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                 .collect::<Vec<_>>();
             assert_eq!(invalid_ms.len(), blinding_factors);
             for mi in invalid_ms {
-                assert_eq!(*mi, C::Scalar::zero());
+                assert_eq!(*mi, C::Scalar::ZERO);
             }
 
             // check sums
             let alpha = C::Scalar::random(&mut rng);
             let cs_input_sum =
                 |compressed_input_expression: &Polynomial<C::Scalar, LagrangeCoeff>| {
-                    let mut lhs_sum = C::Scalar::zero();
+                    let mut lhs_sum = C::Scalar::ZERO;
                     for &fi in compressed_input_expression
                         .iter()
                         .take(params.n() as usize - blinding_factors - 1)
@@ -161,13 +161,13 @@ impl<F: WithSmallOrderMulGroup<3> + Ord> Argument<F> {
                     lhs_sum
                 };
 
-            let mut lhs_sum = C::Scalar::zero();
+            let mut lhs_sum = C::Scalar::ZERO;
 
             for compressed_input_expression in compressed_inputs_expressions.iter() {
                 lhs_sum += cs_input_sum(compressed_input_expression);
             }
 
-            let mut rhs_sum = C::Scalar::zero();
+            let mut rhs_sum = C::Scalar::ZERO;
             for (&ti, &mi) in compressed_table_expression.iter().zip(m_values.iter()) {
                 rhs_sum += mi * (ti + alpha).invert().unwrap();
             }

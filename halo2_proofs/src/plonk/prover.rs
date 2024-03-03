@@ -11,7 +11,7 @@ use super::{
         Advice, Any, Assignment, Challenge, Circuit, Column, ConstraintSystem, Fixed, FloorPlanner,
         Instance, Selector,
     },
-    lookup, permutation, shuffle, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta,
+    mv_lookup, permutation, shuffle, vanishing, ChallengeBeta, ChallengeGamma, ChallengeTheta,
     ChallengeX, ChallengeY, Error, ProvingKey,
 };
 
@@ -51,7 +51,7 @@ pub fn create_proof<
     transcript: &mut T,
 ) -> Result<(), Error>
 where
-    Scheme::Scalar: WithSmallOrderMulGroup<3> + FromUniformBytes<64>,
+    Scheme::Scalar: WithSmallOrderMulGroup<3> + FromUniformBytes<64> + Ord,
 {
     if circuits.len() != instances.len() {
         return Err(Error::InvalidInstances);
@@ -424,7 +424,7 @@ where
     // Sample theta challenge for keeping lookup columns linearly independent
     let theta: ChallengeTheta<_> = transcript.squeeze_challenge_scalar();
 
-    let lookups: Vec<Vec<lookup::prover::Permuted<Scheme::Curve>>> = instance
+    let lookups: Vec<Vec<mv_lookup::prover::Prepared<Scheme::Curve>>> = instance
         .iter()
         .zip(advice.iter())
         .map(|(instance, advice)| -> Result<Vec<_>, Error> {
@@ -434,7 +434,7 @@ where
                 .lookups
                 .iter()
                 .map(|lookup| {
-                    lookup.commit_permuted(
+                    lookup.prepare(
                         pk,
                         params,
                         domain,
@@ -477,13 +477,13 @@ where
         })
         .collect::<Result<Vec<_>, _>>()?;
 
-    let lookups: Vec<Vec<lookup::prover::Committed<Scheme::Curve>>> = lookups
+    let lookups: Vec<Vec<mv_lookup::prover::Committed<Scheme::Curve>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             // Construct and commit to products for each lookup
             lookups
                 .into_iter()
-                .map(|lookup| lookup.commit_product(pk, params, beta, gamma, &mut rng, transcript))
+                .map(|lookup| lookup.commit_grand_sum(pk, params, beta, &mut rng, transcript))
                 .collect::<Result<Vec<_>, _>>()
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -636,7 +636,7 @@ where
         .collect::<Result<Vec<_>, _>>()?;
 
     // Evaluate the lookups, if any, at omega^i x.
-    let lookups: Vec<Vec<lookup::prover::Evaluated<Scheme::Curve>>> = lookups
+    let lookups: Vec<Vec<mv_lookup::prover::Evaluated<Scheme::Curve>>> = lookups
         .into_iter()
         .map(|lookups| -> Result<Vec<_>, _> {
             lookups

@@ -40,7 +40,7 @@ where
     let config = ConcreteCircuit::configure_with_params(&mut cs, params);
     #[cfg(not(feature = "circuit-params"))]
     let config = ConcreteCircuit::configure(&mut cs);
-
+    let cs = cs.chunk_lookups();
     let degree = cs.degree();
 
     let domain = EvaluationDomain::new(degree as u32, k);

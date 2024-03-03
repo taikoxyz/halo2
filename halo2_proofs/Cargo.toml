@@ -44,6 +44,10 @@ name = "dev_lookup"
 harness = false
 
 [[bench]]
+name = "lookups"
+harness = false
+
+[[bench]]
 name = "fft"
 harness = false
 
@@ -80,7 +84,7 @@ serde_json = "1"
 getrandom = { version = "0.2", features = ["js"] }
 
 [features]
-default = ["batch", "bits"]
+default = ["batch", "bits", "logup_skip_inv"]
 dev-graph = ["plotters", "tabbycat"]
 test-dev-graph = [
     "dev-graph",
@@ -96,6 +100,8 @@ batch = ["rand_core/getrandom"]
 circuit-params = []
 cost-estimator = ["serde", "serde_derive"]
 derive_serde = ["halo2curves/derive_serde"]
+
+logup_skip_inv = []
 
 [lib]
 bench = false

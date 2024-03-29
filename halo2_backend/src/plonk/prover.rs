@@ -398,69 +398,70 @@ impl<
         // Also sets advice_polys with the (blinding) updated advice columns and advice_blinds with
         // the blinding factor used for each advice column.
 
-        let mut commit_phase_fn =
-            |advice: &mut AdviceSingle<Scheme::Curve, LagrangeCoeff>,
-             witness: Vec<Option<Polynomial<Scheme::Scalar, LagrangeCoeff>>>|
-             -> Result<(), Error> {
-                let unusable_rows_start = params.n() as usize - (meta.blinding_factors() + 1);
-                let mut advice_values: Vec<_> = witness.into_iter().flatten().collect();
-                let unblinded_advice: HashSet<usize> =
-                    HashSet::from_iter(meta.unblinded_advice_columns.clone());
+        let mut commit_phase_fn = |advice: &mut AdviceSingle<Scheme::Curve, LagrangeCoeff>,
+                                   witness: Vec<
+            Option<Polynomial<Scheme::Scalar, LagrangeCoeff>>,
+        >|
+         -> Result<(), Error> {
+            let unusable_rows_start = params.n() as usize - (meta.blinding_factors() + 1);
+            let mut advice_values: Vec<_> = witness.into_iter().flatten().collect();
+            let unblinded_advice: HashSet<usize> =
+                HashSet::from_iter(meta.unblinded_advice_columns.clone());
 
-                // Add blinding factors to advice columns.
-                for (column_index, advice_values) in column_indices.iter().zip(&mut advice_values) {
-                    if !unblinded_advice.contains(column_index) {
-                        for cell in &mut advice_values[unusable_rows_start..] {
-                            *cell = Scheme::Scalar::random(&mut rng);
-                        }
-                    } else {
-                        #[cfg(feature = "sanity-checks")]
-                        for cell in &advice_values[unusable_rows_start..] {
-                            assert_eq!(*cell, Scheme::Scalar::ZERO);
-                        }
+            // Add blinding factors to advice columns.
+            for (column_index, advice_values) in column_indices.iter().zip(&mut advice_values) {
+                if !unblinded_advice.contains(column_index) {
+                    for cell in &mut advice_values[unusable_rows_start..] {
+                        *cell = Scheme::Scalar::random(&mut rng);
+                    }
+                } else {
+                    #[cfg(feature = "sanity-checks")]
+                    for cell in &advice_values[unusable_rows_start..] {
+                        assert_eq!(*cell, Scheme::Scalar::ZERO);
                     }
                 }
+            }
 
-                // Compute commitments to advice column polynomials
-                let blinds: Vec<_> = column_indices
-                    .iter()
-                    .map(|i| {
-                        if unblinded_advice.contains(i) {
-                            Blind::default()
-                        } else {
-                            Blind(Scheme::Scalar::random(&mut rng))
-                        }
-                    })
-                    .collect();
-                let advice_commitments_projective: Vec<_> = advice_values
-                    .iter()
-                    .zip(blinds.iter())
-                    .map(|(poly, blind)| params.commit_lagrange(&self.engine.msm_backend, poly, *blind))
-                    .collect();
-                let mut advice_commitments_affine =
-                    vec![Scheme::Curve::identity(); advice_commitments_projective.len()];
-                <Scheme::Curve as CurveAffine>::CurveExt::batch_normalize(
-                    &advice_commitments_projective,
-                    &mut advice_commitments_affine,
-                );
-                let advice_commitments_affine = advice_commitments_affine;
-                drop(advice_commitments_projective);
+            // Compute commitments to advice column polynomials
+            let blinds: Vec<_> = column_indices
+                .iter()
+                .map(|i| {
+                    if unblinded_advice.contains(i) {
+                        Blind::default()
+                    } else {
+                        Blind(Scheme::Scalar::random(&mut rng))
+                    }
+                })
+                .collect();
+            let advice_commitments_projective: Vec<_> = advice_values
+                .iter()
+                .zip(blinds.iter())
+                .map(|(poly, blind)| params.commit_lagrange(&self.engine.msm_backend, poly, *blind))
+                .collect();
+            let mut advice_commitments_affine =
+                vec![Scheme::Curve::identity(); advice_commitments_projective.len()];
+            <Scheme::Curve as CurveAffine>::CurveExt::batch_normalize(
+                &advice_commitments_projective,
+                &mut advice_commitments_affine,
+            );
+            let advice_commitments_affine = advice_commitments_affine;
+            drop(advice_commitments_projective);
 
-                // Update transcript.
-                // [TRANSCRIPT-3]
-                for commitment in &advice_commitments_affine {
-                    self.transcript.write_point(*commitment)?;
-                }
+            // Update transcript.
+            // [TRANSCRIPT-3]
+            for commitment in &advice_commitments_affine {
+                self.transcript.write_point(*commitment)?;
+            }
 
-                // Set advice_polys & advice_blinds
-                for ((column_index, advice_values), blind) in
-                    column_indices.iter().zip(advice_values).zip(blinds)
-                {
-                    advice.advice_polys[*column_index] = advice_values;
-                    advice.advice_blinds[*column_index] = blind;
-                }
-                Ok(())
-            };
+            // Set advice_polys & advice_blinds
+            for ((column_index, advice_values), blind) in
+                column_indices.iter().zip(advice_values).zip(blinds)
+            {
+                advice.advice_polys[*column_index] = advice_values;
+                advice.advice_blinds[*column_index] = blind;
+            }
+            Ok(())
+        };
 
         // Update blindings for each advice column
         // [TRANSCRIPT-3]
@@ -659,7 +660,13 @@ impl<
 
         // 5. Commit to the vanishing argument's random polynomial for blinding h(x_3) -------------------
         // [TRANSCRIPT-12]
-        let vanishing = vanishing::Argument::commit(&self.engine.msm_backend, params, domain, &mut rng, self.transcript)?;
+        let vanishing = vanishing::Argument::commit(
+            &self.engine.msm_backend,
+            params,
+            domain,
+            &mut rng,
+            self.transcript,
+        )?;
 
         // 6. Generate the advice polys ------------------------------------------------------------------
 
@@ -709,7 +716,14 @@ impl<
 
         // 8. Construct the vanishing argument's h(X) commitments --------------------------------------
         // [TRANSCRIPT-14]
-        let vanishing = vanishing.construct(&self.engine, params, domain, h_poly, &mut rng, self.transcript)?;
+        let vanishing = vanishing.construct(
+            &self.engine,
+            params,
+            domain,
+            h_poly,
+            &mut rng,
+            self.transcript,
+        )?;
 
         // 9. Compute x  --------------------------------------------------------------------------------
         // [TRANSCRIPT-15]

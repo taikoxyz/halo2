@@ -50,7 +50,9 @@ where
         .enumerate()
         .map(|(i, circuit)| WitnessCalculator::new(params.k(), circuit, &config, &cs, instances[i]))
         .collect();
-    let mut prover = ProverV2::<Scheme, P, _, _, _, _>::new_with_engine(engine, params, pk, instances, rng, transcript)?;
+    let mut prover = ProverV2::<Scheme, P, _, _, _, _>::new_with_engine(
+        engine, params, pk, instances, rng, transcript,
+    )?;
     let mut challenges = HashMap::new();
     let phases = prover.phases().to_vec();
     for phase in phases.iter() {

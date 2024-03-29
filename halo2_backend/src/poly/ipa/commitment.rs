@@ -54,7 +54,7 @@ impl<C: CurveAffine> CommitmentScheme for IPACommitmentScheme<C> {
     }
 }
 
-/// ZAL: Verifier parameters
+/// Verifier parameters
 pub type ParamsVerifierIPA<C> = ParamsIPA<C>;
 
 impl<'params, C: CurveAffine> ParamsVerifier<'params, C> for ParamsIPA<C> {}
